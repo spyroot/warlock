@@ -1,6 +1,6 @@
 
 class NodeActions:
-    def __init__(self, node_ips):
+    def __init__(self, node_ips, command_executer):
         """
 
         :param node_ips:
@@ -8,7 +8,7 @@ class NodeActions:
         self.node_ips = node_ips
         self.tuned_profile_name = ""
         self.tuned_profile_path = ""
-        self.ssh_cmd_runner = SshRunner()
+        self.ssh_cmd_runner = command_executer
 
     def update_ring_buffer(self, adapter_name, username, password=None):
         """
