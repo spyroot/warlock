@@ -1,16 +1,36 @@
+"""
+This class represents a kubernetes state.  The main purpose of this class
+is to read kubernetes object node , pod , networks so in downstream
+code we can use that data for something.
+
+All data fetched once and cached is stored in states.  Caller can do force read
+in case it need constantly update a state of particular object
+
+Author: Mus
+ spyroot@gmail.com
+ mbayramo@stanford.edu
+"""
+
 import json
 import subprocess
 from typing import Dict, List, Optional
 
 
-class KubernetesNodes:
+class KubernetesState:
 
     def __init__(self):
         """
         """
+        # store a node state information
         self.node_state: Dict[str, Dict] = {}
+        # store a node ip address as key and node name
         self.nodes: Dict[str, str] = {}
+        # pods name, node name, ns
+        self.pods: Dict[str, Dict[str, str]] = {}
+        # networks
         self.networks = None
+        # current cluster config
+        self.kube_config = None
 
     @staticmethod
     def run_command(cmd):
@@ -39,8 +59,8 @@ class KubernetesNodes:
 
     def fetch_nodes_uuid_ip(self, node_pool_name: str) -> Dict[str, str]:
         """
-
-        :param node_pool_name:
+        Fetches node uuid i.e, name and ip address
+        :param node_pool_name: name of the
         :return:
         """
         if self.nodes:
@@ -108,7 +128,89 @@ class KubernetesNodes:
         return list(self.nodes.values())
 
     def node_ips(self) -> List[str]:
-        """Return node ip"
+        """Return node ip
         :return:
         """
         return list(self.nodes.keys())
+
+    def read_pod_spec(self, pod_name: str, ns: Optional[str] = "default"):
+        return self.run_command_json(f"kubectl get pod {pod_name} -n {ns} -o json")
+
+    def pods_name(self,
+                  ns: Optional[str] = "default") -> List[str]:
+        """Return list of pod names as list of string
+        :return:
+        """
+        if len(self.pods) == 0:
+            self.pod_node_ns_names(ns=ns)
+
+        return list(self.pods.keys())
+
+    def pod_node_ns_names(
+            self,
+            ns: Optional[str] = "default") -> Dict[str, Dict[str, str]]:
+        """Return pod node name and node name, and namespace.
+        {'pod_name': {'node': 'node_name', 'ns': 'default'}}
+        :return:
+        """
+        if ns == "all":
+            raw_output = self.run_command(
+                f"kubectl get pods -A "
+                f"-o=custom-columns=NAME:.metadata.name,"
+                f"NODE:.spec.nodeName,"
+                f"NAMESPACE:.metadata.namespace "
+                f"--no-headers")
+        else:
+            raw_output = self.run_command(
+                f"kubectl get pods "
+                f"-o=custom-columns=NAME:.metadata.name,"
+                f"NODE:.spec.nodeName,"
+                f"NAMESPACE:.metadata.namespace "
+                f"--no-headers -n {ns}")
+
+        for line in raw_output:
+            if len(line) > 0:
+                parts = line.split()
+                if len(parts) > 2:
+                    self.pods[parts[0]] = {
+                        "node": parts[1],
+                        "ns": parts[2]
+                    }
+        return self.pods
+
+    def read_kube_config(self):
+        """Read current kubernetes config
+        :return:
+        """
+        if self.kube_config is not None:
+            return self.kube_config
+
+        self.kube_config = KubernetesState.run_command_json("kubectl config view -o json")
+        return self.kube_config
+
+    def read_cluster_name(self):
+        """Reads cluster name from kubernetes config
+        :return:
+        """
+        if self.kube_config is None:
+            self.read_kube_config()
+
+        return self.kube_config["clusters"][0]["name"] if self.kube_config["clusters"] else ""
+
+    def read_cluster_username(self):
+        """Reads from cluster config current cluster username
+        :return:
+        """
+        if self.kube_config is None:
+            self.read_kube_config()
+
+        return self.kube_config["users"][0]["name"] if self.kube_config["users"] else ""
+
+    def read_cluster_context(self):
+        """Reads current cluster context
+        :return:
+        """
+        if self.kube_config is None:
+            self.read_kube_config()
+
+        return self.kube_config["current-context"] if "current-context" in self.kube_config else ""

@@ -13,7 +13,7 @@ import paramiko
 from os.path import expanduser
 import argparse
 
-from nodes import KubernetesNodes
+from nodes import KubernetesState
 
 
 # NODE_POOL_NAME = "vf-test-np1-"
@@ -60,11 +60,15 @@ def main(args):
     """
     public_key_path = f"{expanduser('~')}/.ssh/id_rsa.pub"
     tuned_profile = f"/usr/lib/tuned/{args.tuned_profile_name}/tuned.conf"
-    kube_nodes = KubernetesNodes()
-    nodes = kube_nodes.fetch_nodes_uuid_ip(
+    kube_state = KubernetesState()
+    nodes = kube_state.fetch_nodes_uuid_ip(
         args.node_pool_name)
 
-    kube_nodes.fetch_networks()
+    print(kube_state.node_names())
+    print(kube_state.pod_node_ns_names(ns="all"))
+    print(kube_state.pods_name())
+    print(kube_state.read_kube_config())
+    print(kube_state.read_cluster_name())
 
     # print("Node IPs:", node_ips)
     #
