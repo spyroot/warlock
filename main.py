@@ -28,7 +28,6 @@ from nodes import KubernetesNodes
 #
 
 
-
 #
 # def update_ring_buffer(adapter_name: str, node_ips: list, tx_value, rx_value):
 #     """Function update on remote host ring buffer
@@ -61,8 +60,11 @@ def main(args):
     """
     public_key_path = f"{expanduser('~')}/.ssh/id_rsa.pub"
     tuned_profile = f"/usr/lib/tuned/{args.tuned_profile_name}/tuned.conf"
-    node_names, node_ips = KubernetesNodes.get_node_names_and_ips(args.node_pool_name)
-    print(node_names, node_ips)
+    kube_nodes = KubernetesNodes()
+    nodes = kube_nodes.fetch_nodes_uuid_ip(
+        args.node_pool_name)
+
+    kube_nodes.fetch_networks()
 
     # print("Node IPs:", node_ips)
     #
