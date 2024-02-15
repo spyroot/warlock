@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: iperf-antrea-server-tester
+  labels:
+    environment: iperf-server_tester
+    app: antrea-server-tester
+spec:
+  nodeName: vf-test-np1-h5mtj-9cf8fdcf6xcfln5-k9jcm
+  containers:
+  - name: antrea-server-tester
+    command: ["/bin/bash", "-c", "PID=; trap 'kill $PID' TERM INT; sleep infinity & PID=$!; wait $PID"]
+    image: spyroot/pktgen_toolbox_generic:latest
+    imagePullPolicy: IfNotPresent
+    securityContext:
+      capabilities:
+        add: ["NET_ADMIN", "CAP_SYS_NICE", "SYS_NICE","IPC_LOCK", "NET_ADMIN", "SYS_TIME", "CAP_NET_RAW", "CAP_BPF", "CAP_SYS_ADMIN", "SYS_ADMIN"]
+      privileged: true
+    env:
+    - name: PATH
+      value: "/bin:/sbin:/usr/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:$PATH"
+    volumeMounts:
+    - name: sys
+      mountPath: /sys
+      readOnly: true
+    - name: modules
+      mountPath: /lib/modules
+      readOnly: true
+    resources:
+      requests:
+        cpu: "8"
+        memory: 16Gi
+      limits:
+        cpu: "8"
+        memory: 16Gi
+  volumes:
+  - name: sys
+    hostPath:
+      path: /sys
+  - name: modules
+    hostPath:
+      path: /lib/modules
+  nodeSelector:
+    kubernetes.io/os: linux
