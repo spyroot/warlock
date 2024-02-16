@@ -6,19 +6,74 @@
 #  - packet per second for network, latency , storage IO etc.
 #
 #
-import json
-import subprocess
-from pathlib import Path
-from typing import List
-
-import paramiko
-from os.path import expanduser
 import argparse
+import json
+from pathlib import Path
 
 from kube_state import KubernetesState
 from node_actions import NodeActions
 from ssh_runner import SshRunner
+import matplotlib.pyplot as plt
 
+import numpy as np
+import json
+
+
+def prepare_environment(
+        kube_state: KubernetesState,
+        scenario_file: str,
+):
+    """Read scenario from a json file and kubernetes pods used to evaluate
+    a result.  i.e. we mutate a node, and we use pod to observer a result.
+
+    After pod create we update scenario file and add pod IP address.
+
+    :return:
+    """
+    with open(scenario_file, 'r') as file:
+        test_spec = json.load(file)
+        server_config = test_spec.get('environment', {}).get('server', {})
+        client_config = test_spec.get('environment', {}).get('client', {})
+
+        server_pod_spec = Path(server_config.get('pod_spec')).resolve().absolute()
+        client_pod_spec = Path(client_config.get('pod_spec')).resolve().absolute()
+
+        server_pod_name = server_config.get('pod_name')
+        client_pod_name = client_config.get('pod_name')
+
+        node_output = KubernetesState.run_command(f"kubectl apply -f {server_pod_spec}")
+        server_pod_spec = kube_state.read_pod_spec(server_pod_name)
+        server_pod_ip = server_pod_spec.get('status', {}).get('podIPs', [])[0].get('ip')
+
+        node_output = KubernetesState.run_command(f"kubectl apply -f {client_pod_spec}")
+        server_pod_spec = kube_state.read_pod_spec(server_pod_name)
+        client_pod_ip = server_pod_spec.get('status', {}).get('podIPs', [])[0].get('ip')
+
+        server_config['ip'] = server_pod_ip
+        client_config['ip'] = client_pod_ip
+
+    return test_spec
+
+
+def iperf_data_as_np(json_data):
+    measurements = []
+
+    # Iterate over each interval and stream
+    for interval in json_data['intervals']:
+        for stream in interval['streams']:
+            socket = stream['socket']
+            bytes_val = stream['bytes']
+            bps = stream['bits_per_second']
+            cwnd = stream.get('snd_cwnd', np.nan)  # Use np.nan for missing values
+            wnd = stream.get('snd_wnd', np.nan)
+            rtt_val = stream.get('rtt', np.nan)
+            rttvar_val = stream.get('rttvar', np.nan)
+
+            # Append a new row for each stream
+            measurements.append([socket, bytes_val, bps, cwnd, wnd, rtt_val, rttvar_val])
+
+    measurements_np = np.array(measurements)
+    return measurements_np
 
 def main(cmd_args):
     """
@@ -34,23 +89,19 @@ def main(cmd_args):
     print(kube_state.read_kube_config())
     print(kube_state.read_cluster_name())
 
-    print(cmd_args.test_spec)
-    with open(cmd_args.test_spec, 'r') as file:
-        test_spec = json.load(file)
-        server_config = test_spec.get('environment', {}).get('server', {})
-        client_config = test_spec.get('environment', {}).get('client', {})
-        server_pod_spec = Path(server_config.get('pod_spec')).resolve().absolute()
-        client_pod_spec = Path(client_config.get('pod_spec')).resolve().absolute()
-        node_output = KubernetesState.run_command(f"kubectl apply -f {server_pod_spec}")
-        node_output = KubernetesState.run_command(f"kubectl apply -f {client_pod_spec}")
+    test_environment_spec = prepare_environment(kube_state, cmd_args.test_spec)
+    print(test_environment_spec)
 
-    #
-    # ssh_runner = SshRunner(kube_state.node_ips(), username="capv", password="VMware1!")
-    # node_actions = NodeActions(kube_state.node_ips(), ssh_runner)
-    #
-    # node_actions.update_ring_buffer()
-    # node_actions.update_active_tuned()
-    # node_actions.run_iperf_test()
+    ssh_runner = SshRunner(kube_state.node_ips(), username="capv", password="VMware1!")
+    node_actions = NodeActions(
+        kube_state.node_ips(),
+        ssh_runner,
+        test_environment_spec
+    )
+
+    node_actions.update_ring_buffer()
+    node_actions.update_active_tuned()
+    result = node_actions.start_environment()
 
 
 if __name__ == '__main__':

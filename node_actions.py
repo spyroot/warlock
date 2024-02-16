@@ -9,27 +9,40 @@ Author: Mus
  mbayramo@stanford.edu
 """
 import json
-from typing import List
+import subprocess
+from typing import List, Dict
 
 from ssh_runner import SshRunner
 import time
 
 
 class NodeActions:
-    def __init__(self, node_ips: List[str], ssh_executor: SshRunner):
+    def __init__(
+            self, node_ips: List[str],
+            ssh_executor: SshRunner,
+            test_environment_spec=None
+    ):
         """
-        Initializes the NodeActions instance with a list of node IPs and an SSH command executor.
+        Initializes the NodeActions instance with a list of node IPs, an SSH command executor,
+        and the test environment specification.
 
-        :param node_ips: A list of IP addresses for the nodes.
+        :param node_ips: A list of IP addresses for the  kubernetes nodes.
         :param ssh_executor: An object responsible for executing SSH commands.
+        :param test_environment_spec: The test environment specification including configurations for the test.
         """
         self.node_ips = node_ips
         self.ssh_executor = ssh_executor
-        self.tun_value_file = "mutate.json"
 
-        # read json container all value we mutate
-        with open(self.tun_value_file, 'r') as file:
-            self.tun_value = json.load(file)
+        # Set test environment specification directly from the provided argument
+        if test_environment_spec is not None:
+            self.tun_value = test_environment_spec
+        else:
+            # If no spec is provided, fallback to loading from the default file (optional)
+            self.tun_value_file = "mutate.json"
+            with open(self.tun_value_file, 'r') as file:
+                self.tun_value = json.load(file)
+
+        self.debug = True
 
     def update_ring_buffer(self):
         """
@@ -127,16 +140,41 @@ class NodeActions:
             else:
                 print(f"Failed to get current profile on {ip}; exit code: {exit_code}.")
 
-    def start_environment(self, server_pod_ip):
+    @staticmethod
+    def run_command(cmd):
+        """
+        :param cmd:
+        :return:
+        """
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, shell=True
+        )
+
+        if result.returncode == 0:
+            return result.stdout.strip().split('\n')
+        else:
+            raise Exception(f"Command '{cmd}' failed with error: {result.stderr.strip()}")
+
+    @staticmethod
+    def run_command_json(cmd: str) -> Dict:
+        """
+        Execute a shell command that returns JSON and parse the output to a Python dict.
+        """
+        result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+        else:
+            raise Exception(f"Command '{cmd}' failed with error: {result.stderr.strip()}")
+
+    def start_environment(self):
         """
         Starts an iperf server on one pod and then starts an iperf client
         on another pod to perform a test, based on the configuration defined in a JSON file.
         Server pod's IP address is provided as an argument.
-
-        :param server_pod_ip: IP address of the server pod to bind the iperf server and for the client to connect to.
         """
         server_config = self.tun_value.get('environment', {}).get('server', {})
         client_config = self.tun_value.get('environment', {}).get('client', {})
+        server_pod_ip = server_config.get('ip')
 
         server_pod_name = server_config.get('pod_name')
         server_cmd = server_config.get('cmd')
@@ -150,34 +188,38 @@ class NodeActions:
         parallel_streams = client_config.get('parallel_streams', 4)
         client_options = client_config.get('options')
 
-        # Construct and execute the command to start the iperf server
-        server_command = (f"kubectl exec {server_pod_name} "
-                          f"-- /bin/bash -c \"{server_cmd} "
-                          f"-bind {server_pod_ip} {server_options} "
-                          f"--port {server_port}\"")
-        _, exit_code, _ = self.ssh_executor.run(server_command)
-        if exit_code == 0:
-            print(f"iperf server started successfully "
-                  f"in pod {server_pod_name}.")
-        else:
-            print(f"Failed to start iperf server "
-                  f"in pod {server_pod_name}; exit code: {exit_code}.")
-            return
+        try:
+            server_command = (f"kubectl exec {server_pod_name} "
+                              f"-- /bin/bash -c \"{server_cmd} "
+                              f"--bind {server_pod_ip} {server_options} "
+                              f"--port {server_port}\"")
+            server_output = self.run_command(server_command)
+            time.sleep(1)
 
-        time.sleep(2)
+            client_command = (f"kubectl exec -it {client_pod_name} "
+                              f"-- /bin/bash -c \"{client_cmd} "
+                              f"--client {server_pod_ip} {client_options} "
+                              f"--time {duration} "
+                              f"--parallel {parallel_streams} --port {client_port}\"")
 
-        # Construct and execute the command to start the iperf client
-        client_command = (f"kubectl exec -it {client_pod_name} "
-                          f"-- /bin/bash -c \"{client_cmd} "
-                          f"--client {server_pod_ip} {client_options} "
-                          f"--time {duration} "
-                          f"--parallel {parallel_streams} --port {client_port}\"")
+            client_out = self.run_command_json(client_command)
+            if self.debug:
+                bits_per_second_sent = client_out["end"]["sum_sent"]["bits_per_second"]
+                bits_per_second_received = client_out["end"]["sum_received"]["bits_per_second"]
 
-        _, exit_code, _ = self.ssh_executor.run(client_command)
-        if exit_code == 0:
-            print(f"iperf client started successfully "
-                  f"in pod {client_pod_name}. Test duration: {duration} seconds.")
-        else:
-            print(f"Failed to start iperf client "
-                  f"in pod {client_pod_name}; exit code: {exit_code}.")
+                bits_per_second_sent_np = np.float64(bits_per_second_sent)
+                bits_per_second_received_np = np.float64(bits_per_second_received)
+
+                print(f"Bits per second sent: {bits_per_second_sent}")
+                print(f"Bits per second received: {bits_per_second_received}")
+                if self.debug:
+                    print(json.dumps(client_out, indent=4))
+
+                return bits_per_second_sent_np, bits_per_second_received_np
+
+                return np.float64(0), np.float64(0)
+        except json.JSONDecodeError:
+            print("Failed to parse client output as JSON.")
+
+
 

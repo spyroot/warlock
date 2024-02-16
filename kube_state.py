@@ -104,7 +104,6 @@ class KubernetesState:
     def fetch_networks(self, refresh: Optional[bool] = False) -> List[str]:
         """
         """
-
         if refresh is False and self.networks is not None:
             return self.networks
 
