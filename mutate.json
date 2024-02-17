@@ -1,4 +1,9 @@
 {
+  "iaas": {
+    "vcenter_ip": "vcsa.vf.vmw.run",
+    "username":  "administrator@vsphere.local",
+    "password": "VMware1!"
+  },
   "adapters_tune": [
     {
       "adapter_name": "eth0",

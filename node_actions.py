@@ -203,23 +203,18 @@ class NodeActions:
                               f"--parallel {parallel_streams} --port {client_port}\"")
 
             client_out = self.run_command_json(client_command)
+            bps_sent = client_out["end"]["sum_sent"]["bits_per_second"]
+            bps_received = client_out["end"]["sum_received"]["bits_per_second"]
+
             if self.debug:
-                bits_per_second_sent = client_out["end"]["sum_sent"]["bits_per_second"]
-                bits_per_second_received = client_out["end"]["sum_received"]["bits_per_second"]
+                print(f"Bits per second sent: {bps_sent}")
+                print(f"Bits per second received: {bps_received}")
+                print(json.dumps(client_out, indent=4))
 
-                bits_per_second_sent_np = np.float64(bits_per_second_sent)
-                bits_per_second_received_np = np.float64(bits_per_second_received)
-
-                print(f"Bits per second sent: {bits_per_second_sent}")
-                print(f"Bits per second received: {bits_per_second_received}")
-                if self.debug:
-                    print(json.dumps(client_out, indent=4))
-
-                return bits_per_second_sent_np, bits_per_second_received_np
-
-                return np.float64(0), np.float64(0)
+            return bps_sent, bps_received, client_cmd
         except json.JSONDecodeError:
             print("Failed to parse client output as JSON.")
 
+        return 0, 0, {}
 
 

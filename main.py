@@ -13,7 +13,9 @@ from pathlib import Path
 from kube_state import KubernetesState
 from node_actions import NodeActions
 from ssh_runner import SshRunner
-import matplotlib.pyplot as plt
+from inference import (
+    iperf_tcp_json_to_np, plot_tcp_perf
+)
 
 import numpy as np
 import json
@@ -55,39 +57,25 @@ def prepare_environment(
     return test_spec
 
 
-def iperf_data_as_np(json_data):
-    measurements = []
-
-    # Iterate over each interval and stream
-    for interval in json_data['intervals']:
-        for stream in interval['streams']:
-            socket = stream['socket']
-            bytes_val = stream['bytes']
-            bps = stream['bits_per_second']
-            cwnd = stream.get('snd_cwnd', np.nan)  # Use np.nan for missing values
-            wnd = stream.get('snd_wnd', np.nan)
-            rtt_val = stream.get('rtt', np.nan)
-            rttvar_val = stream.get('rttvar', np.nan)
-
-            # Append a new row for each stream
-            measurements.append([socket, bytes_val, bps, cwnd, wnd, rtt_val, rttvar_val])
-
-    measurements_np = np.array(measurements)
-    return measurements_np
-
-def main(cmd_args):
+def debug_info(kube_state: KubernetesState):
     """
 
+    :param kube_state:
     :return:
     """
-    kube_state = KubernetesState()
-    nodes = kube_state.fetch_nodes_uuid_ip(args.node_pool_name)
-
     print(kube_state.node_names())
     print(kube_state.pod_node_ns_names(ns="all"))
     print(kube_state.pods_name())
     print(kube_state.read_kube_config())
     print(kube_state.read_cluster_name())
+
+
+def main(cmd_args):
+    """
+    :return:
+    """
+    kube_state = KubernetesState()
+    nodes = kube_state.fetch_nodes_uuid_ip(args.node_pool_name)
 
     test_environment_spec = prepare_environment(kube_state, cmd_args.test_spec)
     print(test_environment_spec)
@@ -99,9 +87,15 @@ def main(cmd_args):
         test_environment_spec
     )
 
+    # mutate environment
     node_actions.update_ring_buffer()
     node_actions.update_active_tuned()
-    result = node_actions.start_environment()
+    # run experiment
+    test_result = node_actions.start_environment()
+
+    # vectorize and save result
+    iperf_tcp_json_to_np(test_result)
+    plot_tcp_perf(test_result, "bps", "plots", "bps_per_core_ring_size4096.png")
 
 
 if __name__ == '__main__':
