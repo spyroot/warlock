@@ -8,9 +8,9 @@ Author: Mus
 """
 import json
 import os
+from contextlib import contextmanager
 from typing import Dict, Optional, List, Tuple, Any
 
-import pyVmomi
 from pyVim.connect import SmartConnect, Disconnect
 from pyVmomi import vim
 import atexit
@@ -71,12 +71,12 @@ class VMwareVimState:
         self.test_environment_spec = test_environment_spec
 
         # Default values from test_environment_spec if it exists and specific values are not provided
-        default_vcenter_ip = self.test_environment_spec.get('iaas', {}).get('vcenter_ip',
-                                                                            '') if self.test_environment_spec else ''
-        default_username = self.test_environment_spec.get('iaas', {}).get('username',
-                                                                          '') if self.test_environment_spec else ''
-        default_password = self.test_environment_spec.get('iaas', {}).get('password',
-                                                                          '') if self.test_environment_spec else ''
+        default_vcenter_ip = self.test_environment_spec.get('iaas', {}).get(
+            'vcenter_ip', '') if self.test_environment_spec else ''
+        default_username = self.test_environment_spec.get('iaas', {}).get(
+            'username', '') if self.test_environment_spec else ''
+        default_password = self.test_environment_spec.get('iaas', {}).get(
+            'password', '') if self.test_environment_spec else ''
 
         # Use provided values or defaults from test_environment_spec
         self.vcenter_ip = vcenter_ip if vcenter_ip is not None else default_vcenter_ip
@@ -93,6 +93,7 @@ class VMwareVimState:
         # cache for VM searches
         self._vm_search_cache = {}
 
+        # cache for esxi lookup by
         self.esxi_host_cache = {
             'ip': {},
             'name': {},
@@ -100,9 +101,10 @@ class VMwareVimState:
             'moId': {}
         }
 
-        self.si = None
-
+        # cache for vm data
         self._vm_cache = {}
+
+        self.si = None
 
     def connect_to_vcenter(self):
         """Connect to the vCenter server and store the connection instance."""
@@ -137,6 +139,36 @@ class VMwareVimState:
         password = password or os.getenv('VCENTER_PASSWORD')
         return cls(ssh_executor, None, vcenter_ip, username, password)
 
+    @contextmanager
+    def dvs_container_view(self):
+        """
+
+        :return:
+        """
+        ctx = self.si.RetrieveContent()
+        container = ctx.viewManager.CreateContainerView(
+            ctx.rootFolder, [vim.DistributedVirtualSwitch], True)
+        try:
+            yield container
+        finally:
+            container.Destroy()
+
+    @contextmanager
+    def container_view(self, obj_type):
+        """
+
+        :param obj_type:
+        :return:
+        """
+        self.connect_to_vcenter()
+        content = self.si.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, obj_type, True)
+        try:
+            yield container
+        finally:
+            container.Destroy()
+
     def _find_by_dns_name(self, vm_name):
         """
         Retrieves a virtual machine by its DNS name.
@@ -144,7 +176,8 @@ class VMwareVimState:
         :param vm_name: The DNS name of the VM.
         :return: The VM object if found, None otherwise.
         """
-        # Check if the VM is already in the cache
+
+        # from cache
         if vm_name in self._vm_cache:
             return self._vm_cache[vm_name]
 
@@ -153,11 +186,14 @@ class VMwareVimState:
         search_index = content.searchIndex
         vm = search_index.FindByDnsName(dnsName=vm_name, vmSearch=True)
 
+        # update cache
         self._vm_cache[vm_name] = vm
         return vm
 
     def find_vm_by_name_substring(
-            self, name_substring: str) -> Tuple[List[str], List[VMConfigInfo]]:
+            self,
+            name_substring: str
+    ) -> Tuple[List[str], List[VMConfigInfo]]:
         """
         Find a VM by name substring in the vCenter server.
 
@@ -174,9 +210,10 @@ class VMwareVimState:
 
         ctx_view = content.viewManager.CreateContainerView(
             content.rootFolder, [vim.VirtualMachine], True)
-        vms = ctx_view.view
 
+        vms = ctx_view.view
         if not hasattr(ctx_view, 'view'):
+            ctx_view.Destroy()
             return [], []
 
         ctx_view.Destroy()
@@ -214,30 +251,27 @@ class VMwareVimState:
         :return: A dictionary where keys are host identifiers and values are lists of pNICs.
         """
         dvs_pnics_by_host = {}
-        ctx = self.si.RetrieveContent()
-        container = ctx.viewManager.CreateContainerView(
-            ctx.rootFolder, [vim.DistributedVirtualSwitch], True
-        )
 
-        for dvs in container.view:
-            if dvs.config.uuid == switch_uuid:
-                for host_member in dvs.config.host:
-                    if (hasattr(host_member, 'config')
-                            and hasattr(host_member.config, 'host') and host_member.config.host):
-                        host_id = host_member.config.host
-                        host_name = getattr(host_member.config.host, 'name', 'Unknown Host')
+        with self.dvs_container_view() as container:
+            for dvs in container.view:
+                if dvs.config.uuid == switch_uuid:
+                    for host_member in dvs.config.host:
+                        if (hasattr(host_member, 'config')
+                                and hasattr(host_member.config, 'host') and host_member.config.host):
+                            host_id = host_member.config.host
+                            host_name = getattr(host_member.config.host, 'name', 'Unknown Host')
 
-                        self._host_name_to_id[host_name] = str(host_id)
-                        self._host_id_to_name[str(host_id)] = host_name
+                            self._host_name_to_id[host_name] = str(host_id)
+                            self._host_id_to_name[str(host_id)] = host_name
 
-                        if host_name not in dvs_pnics_by_host:
-                            dvs_pnics_by_host[host_name] = []
+                            if host_name not in dvs_pnics_by_host:
+                                dvs_pnics_by_host[host_name] = []
 
-                        # we take pnic from backing config
-                        if (hasattr(host_member.config, 'backing')
-                                and hasattr(host_member.config.backing, 'pnicSpec')):
-                            for pnic_spec in host_member.config.backing.pnicSpec:
-                                dvs_pnics_by_host[host_name].append(pnic_spec.pnicDevice)
+                            # we take pnic from backing config
+                            if (hasattr(host_member.config, 'backing')
+                                    and hasattr(host_member.config.backing, 'pnicSpec')):
+                                for pnic_spec in host_member.config.backing.pnicSpec:
+                                    dvs_pnics_by_host[host_name].append(pnic_spec.pnicDevice)
 
         return dvs_pnics_by_host
 
@@ -264,10 +298,13 @@ class VMwareVimState:
         container = content.viewManager.CreateContainerView(
             content.rootFolder, [vim.DistributedVirtualSwitch], True)
 
-        for dvs in container.view:
-            if hasattr(dvs, 'uuid') and dvs.uuid == dvs_uuid:
-                self._dvs_uuid_to_dvs[dvs.uuid] = dvs
-                return dvs, dvs.config
+        try:
+            for dvs in container.view:
+                if hasattr(dvs, 'uuid') and dvs.uuid == dvs_uuid:
+                    self._dvs_uuid_to_dvs[dvs.uuid] = dvs
+                    return dvs, dvs.config
+        finally:
+            container.Destroy()
 
         raise SwitchNotFound(dvs_uuid)
 
@@ -299,8 +336,6 @@ class VMwareVimState:
         :return:
         """
         self.connect_to_vcenter()
-        content = self.si.RetrieveContent()
-        search_index = content.searchIndex
         vm = self._find_by_dns_name(vm_name)
 
         processed_switches = set()
@@ -332,8 +367,6 @@ class VMwareVimState:
         """
         try:
             self.connect_to_vcenter()
-            content = self.si.RetrieveContent()
-            search_index = content.searchIndex
             vm = self._find_by_dns_name(vm_name)
             if vm:
                 host = vm.runtime.host
@@ -369,9 +402,6 @@ class VMwareVimState:
         self.connect_to_vcenter()
 
         sriov_adapters = []
-
-        ctx = self.si.RetrieveContent()
-        ctx_search_idx = ctx.searchIndex
         vm = self._find_by_dns_name(vm_name)
         if not vm:
             raise VMNotFoundException(vm_name)
@@ -428,8 +458,9 @@ class VMwareVimState:
         return getattr(hardware, key, None)
 
     def get_esxi_host_by_identifier(
-            self, identifier: str
-    ) -> EsxHost:
+            self,
+            identifier: str
+    ) -> vim.HostSystem:
         """
         Retrieves an ESXi host system object by its IP address, name, UUID, or host system ID.
 
@@ -451,23 +482,26 @@ class VMwareVimState:
 
         self.connect_to_vcenter()
         content = self.si.RetrieveContent()
+        container = content.viewManager.CreateContainerView(content.rootFolder, [vim.HostSystem], True)
 
-        for host in content.viewManager.CreateContainerView(content.rootFolder, [vim.HostSystem], True).view:
-            host_ip = host.summary.managementServerIp
-            host_name = host.name
-            host_uuid = host.summary.hardware.uuid
-            host_moId = str(host.summary.host)
+        try:
+            for host in container.view:
+                host_ip = host.summary.managementServerIp
+                host_name = host.name
+                host_uuid = host.summary.hardware.uuid
+                host_moId = str(host.summary.host)
 
-            # Update cache
-            self.esxi_host_cache['ip'][host_ip] = host
-            self.esxi_host_cache['name'][host_name] = host
-            self.esxi_host_cache['uuid'][host_uuid] = host
-            self.esxi_host_cache['moId'][host_moId] = host
+                self.esxi_host_cache['ip'][host_ip] = host
+                self.esxi_host_cache['name'][host_name] = host
+                self.esxi_host_cache['uuid'][host_uuid] = host
+                self.esxi_host_cache['moId'][host_moId] = host
 
-            if identifier in [host_ip, host_name, host_uuid, host_moId]:
-                return host
+                if identifier in [host_ip, host_name, host_uuid, host_moId]:
+                    return host
+        finally:
+            container.Destroy()
 
-        raise EsxHostNotFound(identifier)
+        raise EsxHostNotFound(f"ESXi host with identifier {identifier} not found.")
 
     def get_pci_device_info(
             self,
@@ -558,7 +592,6 @@ class VMwareVimState:
             vm_sriov_adapters = self.vm_sriov_devices(vm_name)
             hardware_info = vm_config.hardware
 
-            # Extract the required hardware details
             hardware_details = {
                 'numCPU': hardware_info.numCPU,
                 'numCoresPerSocket': hardware_info.numCoresPerSocket,
