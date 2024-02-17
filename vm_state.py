@@ -36,6 +36,20 @@ class SwitchNotFound(Exception):
         super().__init__(message)
 
 
+class EsxHostNotFound(Exception):
+    def __init__(self, identified):
+        message = f"Esxi host with identified '{identified}' not found."
+        super().__init__(message)
+
+
+class VMNotFoundException(Exception):
+    """Exception to be raised when a VM cannot be found."""
+
+    def __init__(self, vm_name):
+        message = f"VM '{vm_name}' not found."
+        super().__init__(message)
+
+
 class VMwareVimState:
     def __init__(
             self, ssh_executor: SshRunner,
@@ -88,6 +102,8 @@ class VMwareVimState:
 
         self.si = None
 
+        self._vm_cache = {}
+
     def connect_to_vcenter(self):
         """Connect to the vCenter server and store the connection instance."""
         if not self.si:
@@ -120,6 +136,25 @@ class VMwareVimState:
         username = username or os.getenv('VCENTER_USERNAME')
         password = password or os.getenv('VCENTER_PASSWORD')
         return cls(ssh_executor, None, vcenter_ip, username, password)
+
+    def _find_by_dns_name(self, vm_name):
+        """
+        Retrieves a virtual machine by its DNS name.
+
+        :param vm_name: The DNS name of the VM.
+        :return: The VM object if found, None otherwise.
+        """
+        # Check if the VM is already in the cache
+        if vm_name in self._vm_cache:
+            return self._vm_cache[vm_name]
+
+        self.connect_to_vcenter()
+        content = self.si.RetrieveContent()
+        search_index = content.searchIndex
+        vm = search_index.FindByDnsName(dnsName=vm_name, vmSearch=True)
+
+        self._vm_cache[vm_name] = vm
+        return vm
 
     def find_vm_by_name_substring(
             self, name_substring: str) -> Tuple[List[str], List[VMConfigInfo]]:
@@ -179,8 +214,10 @@ class VMwareVimState:
         :return: A dictionary where keys are host identifiers and values are lists of pNICs.
         """
         dvs_pnics_by_host = {}
-        content = self.si.RetrieveContent()
-        container = content.viewManager.CreateContainerView(content.rootFolder, [vim.DistributedVirtualSwitch], True)
+        ctx = self.si.RetrieveContent()
+        container = ctx.viewManager.CreateContainerView(
+            ctx.rootFolder, [vim.DistributedVirtualSwitch], True
+        )
 
         for dvs in container.view:
             if dvs.config.uuid == switch_uuid:
@@ -264,7 +301,7 @@ class VMwareVimState:
         self.connect_to_vcenter()
         content = self.si.RetrieveContent()
         search_index = content.searchIndex
-        vm = search_index.FindByDnsName(dnsName=vm_name, vmSearch=True)
+        vm = self._find_by_dns_name(vm_name)
 
         processed_switches = set()
         all_vm_network_data = {}
@@ -297,7 +334,7 @@ class VMwareVimState:
             self.connect_to_vcenter()
             content = self.si.RetrieveContent()
             search_index = content.searchIndex
-            vm = search_index.FindByDnsName(dnsName=vm_name, vmSearch=True)
+            vm = self._find_by_dns_name(vm_name)
             if vm:
                 host = vm.runtime.host
                 return host.summary.config.name
@@ -335,40 +372,34 @@ class VMwareVimState:
 
         ctx = self.si.RetrieveContent()
         ctx_search_idx = ctx.searchIndex
-        vm = ctx_search_idx.FindByDnsName(dnsName=vm_name, vmSearch=True)
+        vm = self._find_by_dns_name(vm_name)
+        if not vm:
+            raise VMNotFoundException(vm_name)
 
         esxi_host = self.get_esxi_ip_of_vm(vm_name)
 
-        if vm:
-            for device in vm.config.hardware.device:
-                if isinstance(device, vim.vm.device.VirtualSriovEthernetCard):
-                    pci_id = device.sriovBacking.physicalFunctionBacking.id if (
-                        hasattr(device.sriovBacking, 'physicalFunctionBacking')) else None
-                    if pci_id:
-                        pci_info = self.get_pci_device_info(esxi_host, pci_id)
-                        adapter_info = {
-                            'label': device.deviceInfo.label,
-                            'switchUuid': device.backing.port.switchUuid if hasattr(device.backing, 'port') else None,
-                            'portgroupKey': device.backing.port.portgroupKey if hasattr(device.backing,
-                                                                                        'port') else None,
-                            'numaNode': device.numaNode,
-                            'vf_mac': device.macAddress,
-                            'id': pci_id,
-                            'pf_host': esxi_host,
-                            'pf_mac': pci_info.get('mac', 'Unknown'),
-                            'deviceName': pci_info.get('deviceName', 'Unknown'),
-                            'vendorName': pci_info.get('vendorName', 'Unknown'),
-                            'pNIC': pci_info.get('pNIC', 'Unknown'),
-                        }
-                        sriov_adapters.append(adapter_info)
+        for device in vm.config.hardware.device:
+            if isinstance(device, vim.vm.device.VirtualSriovEthernetCard):
+                pci_id = device.sriovBacking.physicalFunctionBacking.id if (
+                    hasattr(device.sriovBacking, 'physicalFunctionBacking')) else None
+                if pci_id:
+                    pci_info = self.get_pci_device_info(esxi_host, pci_id)
+                    adapter_info = {
+                        'label': device.deviceInfo.label,
+                        'switchUuid': device.backing.port.switchUuid if hasattr(device.backing, 'port') else None,
+                        'portgroupKey': device.backing.port.portgroupKey if hasattr(device.backing, 'port') else None,
+                        'numaNode': device.numaNode,
+                        'vf_mac': device.macAddress,
+                        'id': pci_id,
+                        'pf_host': esxi_host,
+                        'pf_mac': pci_info.get('mac', 'Unknown'),
+                        'deviceName': pci_info.get('deviceName', 'Unknown'),
+                        'vendorName': pci_info.get('vendorName', 'Unknown'),
+                        'pNIC': pci_info.get('pNIC', 'Unknown'),
+                    }
+                    sriov_adapters.append(adapter_info)
 
-            if not sriov_adapters:
-                print(f"VM '{vm_name}' is not configured with SR-IOV or does not have a vNIC using SR-IOV.")
-            else:
-                print(f"VM '{vm_name}' is configured with SR-IOV. Adapters: {sriov_adapters}")
-        else:
-            print("VM not found.")
-
+        print("DONE SRIOV")
         return sriov_adapters
 
     @staticmethod
@@ -436,7 +467,7 @@ class VMwareVimState:
             if identifier in [host_ip, host_name, host_uuid, host_moId]:
                 return host
 
-        return None
+        raise EsxHostNotFound(identifier)
 
     def get_pci_device_info(
             self,
@@ -479,11 +510,13 @@ class VMwareVimState:
                 pci_info = pci_device
                 break
 
+        driver = ""
         if pci_info:
             pnic_info = None
             for pnic in host_system.config.network.pnic:
                 if hasattr(pnic, 'pci') and pnic.pci == pci_device_id:
                     pnic_info = pnic
+                    driver = pnic.driver if hasattr(pnic, 'driver') else "Unknown"
                     break
 
             if pnic_info:
@@ -492,7 +525,8 @@ class VMwareVimState:
                     "id": pci_info.id,
                     "deviceName": pci_info.deviceName,
                     "vendorName": pci_info.vendorName,
-                    "pNIC": pnic_info.device
+                    "pNIC": pnic_info.device,
+                    "driver": driver,
                 }
             else:
                 return {
@@ -500,7 +534,8 @@ class VMwareVimState:
                     "id": pci_info.id,
                     "deviceName": pci_info.deviceName,
                     "vendorName": pci_info.vendorName,
-                    "pNIC": "Not found"
+                    "pNIC": "Not found",
+                    "driver": driver,
                 }
         else:
             return f"PCI device {pci_device_id} not found on host {esxi_host_ip}."
@@ -508,19 +543,34 @@ class VMwareVimState:
     def vm_state(self, vm_name):
         """
         Retrieves the state of VMs that match a given name substring,
-        including information about their pNICs and SR-IOV adapters.
+        including information about their pNICs, SR-IOV adapters, and specific hardware details.
 
         :param vm_name: Substring of the VM name to search for.
         :return: A dictionary containing the state information for each matching VM.
         """
         vm_states = {}
         vms, vms_config = self.find_vm_by_name_substring(vm_name)
-        for vm_name in vms:
+
+        for i, vm_name in enumerate(vms):
+            vm_config = vms_config[i]
+            esxi_host = self.get_esxi_ip_of_vm(vm_name)
             pnic_data = self.vm_pnic_info(vm_name)
             vm_sriov_adapters = self.vm_sriov_devices(vm_name)
+            hardware_info = vm_config.hardware
+
+            # Extract the required hardware details
+            hardware_details = {
+                'numCPU': hardware_info.numCPU,
+                'numCoresPerSocket': hardware_info.numCoresPerSocket,
+                'autoCoresPerSocket': hardware_info.autoCoresPerSocket,
+                'memoryMB': hardware_info.memoryMB,
+            }
+
             vm_states[vm_name] = {
+                'esxiHost': esxi_host,
                 'pnic_data': pnic_data,
-                'sriov_adapters': vm_sriov_adapters
+                'sriov_adapters': vm_sriov_adapters,
+                'hardware_details': hardware_details,
             }
         return vm_states
 
@@ -618,7 +668,6 @@ def test_vms_sriov_nics():
 
 
 def test_vms_state():
-
     vcenter_ip = "vcsa.vf.vmw.run"
     username = "administrator@vsphere.local"
     password = "VMware1!"
@@ -633,5 +682,6 @@ def test_vms_state():
 
     vms_state = vmware_vim_state.vm_state(vm_sub_name)
     print(json.dumps(vms_state, indent=4))
+
 
 test_vms_state()
