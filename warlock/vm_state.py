@@ -117,6 +117,7 @@ class VMwareVimState:
         # cache mapping host id to hostname
         self._host_name_to_id = {}
         self._host_id_to_name = {}
+        self._esxi_host = {}
 
         # cache mapping switch uuid to dvs
         self._dvs_uuid_to_dvs = {}
@@ -602,16 +603,72 @@ class VMwareVimState:
         hardware = vm_config.hardware
         return getattr(hardware, key, None)
 
-    def get_esxi_host_by_identifier(
+    def read_esxi_hosts(
+            self,
+    ) -> Dict[str, vim.HostSystem]:
+        """
+        Retrieves all ESXi host.
+        :return: Dict of vim.HostSystem object.
+        """
+
+        self.connect_to_vcenter()
+        content = self.si.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.HostSystem],
+            True
+        )
+
+        try:
+            for host in container.view:
+                self.esxi_host_cache['name'][host.name] = host
+                self.esxi_host_cache['uuid'][host.summary.hardware.uuid] = host
+                self.esxi_host_cache['moId'][str(host.summary.host)] = host
+
+        finally:
+            container.Destroy()
+
+        return self.esxi_host_cache['moId']
+
+    def read_esxi_mgmt_address(
+            self
+    ) -> Dict[str, List[str]]:
+        """
+        Read all esxi host mgmt address.
+       .. code-block:: python
+          vim_state = warlock.VMwareVimState.from_optional_credentials(
+                    ssh_executor=None,
+                    vcenter_ip=os.getenv('VCENTER_IP', 'default_vcenter_ip'),
+                    username=os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local'),
+                    password=os.getenv('VCENTER_PASSWORD', 'default_password')
+                )
+            esxi_mgmt_address = vim_state.read_esxi_mgmt_address()
+            print(esxi_mgmt_address)
+            {
+                "'vim.HostSystem:host-12'": ['10.252.80.79', '198.19.56.239'],
+                "'vim.HostSystem:host-15'": ['10.252.80.107', '198.19.56.200']
+             }
+             ..
+        :return:
+        """
+        esxi_hosts = self.read_esxi_hosts()
+        host_address = {}
+        for h in esxi_hosts:
+            ip_address = [v.spec.ip.ipAddress for v in esxi_hosts[h].config.network.vnic]
+            host_address[h] = ip_address
+
+        return host_address
+
+    def read_esxi_host(
             self,
             identifier: str
     ) -> vim.HostSystem:
         """
-        Retrieves an ESXi host system object by its IP address, name, UUID, or host system ID.
+        Retrieves an ESXi host system object by its IP address,
+        name, UUID, or host system ID.
 
         :param identifier: IP address, name, UUID, or host system ID of the ESXi host.
 
-        Examples:
+        :Examples:
         - By IP address: "192.168.1.100"
         - By name: "esxi-hostname.domain.com"
         - By UUID: "4c4c4544-004d-5010-805a-b8c04f325732"
@@ -637,17 +694,15 @@ class VMwareVimState:
 
         try:
             for host in container.view:
-                host_ip = host.summary.managementServerIp
                 host_name = host.name
                 host_uuid = host.summary.hardware.uuid
                 host_moId = str(host.summary.host)
 
-                self.esxi_host_cache['ip'][host_ip] = host
                 self.esxi_host_cache['name'][host_name] = host
                 self.esxi_host_cache['uuid'][host_uuid] = host
                 self.esxi_host_cache['moId'][host_moId] = host
 
-                if identifier in [host_ip, host_name, host_uuid, host_moId]:
+                if identifier in [host_name, host_uuid, host_moId]:
                     return host
         finally:
             if self._debug:
@@ -679,7 +734,7 @@ class VMwareVimState:
             self._pci_dev_cache[esxi_host_identified] = {}
 
         self.connect_to_vcenter()
-        host_system = self.get_esxi_host_by_identifier(esxi_host_identified)
+        host_system = self.read_esxi_host(esxi_host_identified)
         if not host_system:
             raise EsxHostNotFound(
                 f"ESXi host {esxi_host_identified} not found")
@@ -707,10 +762,9 @@ class VMwareVimState:
             self._host_device_pnic[esxi_host_identified] = {}
 
         self.connect_to_vcenter()
-        host_system = self.get_esxi_host_by_identifier(esxi_host_identified)
+        host_system = self.read_esxi_host(esxi_host_identified)
 
         for pnic in host_system.config.network.pnic:
-            print(f"adding device {pnic.device}")
             self._host_device_pnic[esxi_host_identified][pnic.device] = {
                 "pci": pnic.pci,
                 'mac': pnic.mac,
@@ -776,7 +830,7 @@ class VMwareVimState:
             start_time = time.time()
 
         self.connect_to_vcenter()
-        host_system = self.get_esxi_host_by_identifier(esxi_host_ip)
+        host_system = self.read_esxi_host(esxi_host_ip)
 
         if not host_system:
             return f"Host {esxi_host_ip} not found."

@@ -273,3 +273,49 @@ class TestVMwareVimState(unittest.TestCase):
         with self.assertRaises(SwitchNotFound):
             _, _ = self.vmware_vim_state.get_dvs_by_uuid("test_not_found")
 
+    def test_read_esxi_hosts(self):
+        """Tests a read ESXI hosts method
+        :return:
+        """
+        esxi_hosts = self.vmware_vim_state.read_esxi_hosts()
+        self.assertEqual(
+            len(self.vmware_vim_state.esxi_host_cache['uuid']),
+            len(esxi_hosts),
+            "The length of the returned esxi host list should match the cache size.")
+
+    def test_read_esxi_mgmt_address(self):
+        """Tests a read ESXI hosts method
+        :return:
+        """
+        esxi_mgmt_address = self.vmware_vim_state.read_esxi_mgmt_address()
+        print(esxi_mgmt_address)
+
+    def test_read_esxi_host(self):
+        """Tests a read ESXI hosts method
+        :return:
+        """
+        esxi_hosts = self.vmware_vim_state.read_esxi_hosts()
+        self.assertEqual(
+            len(self.vmware_vim_state.esxi_host_cache['uuid']),
+            len(esxi_hosts),
+            "The length of the returned esxi host list should match the cache size.")
+
+        for uuid, host in esxi_hosts.items():
+            esxi_host = self.vmware_vim_state.read_esxi_host(uuid)
+            self.assertEqual(esxi_host, host,
+                             f"The ESXi host retrieved by UUID {uuid} should match the cached version.")
+
+    def test_read_esxi_host_pnic(self):
+        """Tests a read ESXI hosts method
+        :return:
+        """
+        esxi_hosts = self.vmware_vim_state.read_esxi_hosts()
+        self.assertEqual(
+            len(self.vmware_vim_state.esxi_host_cache['uuid']),
+            len(esxi_hosts),
+            "The length of the returned esxi host list should match the cache size.")
+
+        for uuid, host in esxi_hosts.items():
+            data = self.vmware_vim_state.fetch_esxi_host_pnic(uuid)
+            print(data)
+
