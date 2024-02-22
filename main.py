@@ -7,17 +7,15 @@
 #
 #
 import argparse
-import json
 from pathlib import Path
 
-from kube_state import KubernetesState
-from node_actions import NodeActions
-from ssh_runner import SshRunner
-from inference import (
+from warlock.kube_state import KubernetesState
+from warlock.node_actions import NodeActions
+from warlock.ssh_runner import SshRunner
+from warlock.inference import (
     iperf_tcp_json_to_np, plot_tcp_perf
 )
 
-import numpy as np
 import json
 
 

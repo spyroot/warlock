@@ -38,7 +38,7 @@ class NodeActions:
             self.tun_value = test_environment_spec
         else:
             # If no spec is provided, fallback to loading from the default file (optional)
-            self.tun_value_file = "mutate.json"
+            self.tun_value_file = "../mutate.json"
             with open(self.tun_value_file, 'r') as file:
                 self.tun_value = json.load(file)
 
