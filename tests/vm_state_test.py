@@ -11,7 +11,7 @@ import os
 import unittest
 import time
 
-from warlock.vm_state import VMwareVimState, SwitchNotFound, EsxHostNotFound, VMNotFoundException
+from warlock.vm_state import VMwareVimState, SwitchNotFound, EsxHostNotFound, VMNotFoundException, PciDeviceClass
 
 
 class TestVMwareVimState(unittest.TestCase):
@@ -409,16 +409,35 @@ class TestVMwareVimState(unittest.TestCase):
             _ = self.vmware_vim_state.read_vm_pnic_info("not found")
 
     def test_resolve_esxi_of_vm(self):
-        """Tests a read vm's  pnic information
+        """Tests a resolve esxi host from vm
         :return:
         """
         vm_pnic_data = self.vmware_vim_state.get_esxi_ip_of_vm(self._test_vm_name)
         self.assertIsNotNone(vm_pnic_data, "get_esxi_ip_of_vm should not return None")
 
-    def test_read_pci_devices(self):
+    def test_read_pci_devices_with_valid_host(self):
         """Tests a read vm's  pnic information
         :return:
         """
-        pci_devices = self.vmware_vim_state.read_pci_devices(self._test_vm_name)
+        pci_devices = self.vmware_vim_state.read_pci_devices()
         self.assertIsNotNone(pci_devices, "read_pci_devices should not return None")
-        print(pci_devices)
+        self.assertIsInstance(pci_devices, dict, "'pci_devices' should be a Dictionary")
+
+    def test_read_pci_devices_with_invalid_host(self):
+        """Test reading PCI devices with a non-existent ESXi host identifier."""
+        invalid_esxi_host_identifier = 'invalid_host_id'
+        with self.assertRaises(EsxHostNotFound):
+            _ = self.vmware_vim_state.read_pci_devices(invalid_esxi_host_identifier)
+
+    def test_read_pci_devices_with_filter(self):
+        """Test reading PCI devices with a specific PCI class filter."""
+        filter_class = PciDeviceClass.NETWORK_CONTROLLER
+        pci_devices = self.vmware_vim_state.read_pci_devices(
+            esxi_host_identifier=None, filter_class=filter_class
+        )
+        self.assertIsInstance(pci_devices, dict, "'pci_devices' should be a Dictionary")
+        for host_id, devices in pci_devices.items():
+            for device_id, pci_device in devices.items():
+                self.assertEqual((pci_device.classId >> 8), filter_class.value,
+                                 f"PCI device {device_id} on host {host_id} should "
+                                 f"match the filter class {filter_class.name}")

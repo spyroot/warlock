@@ -38,7 +38,7 @@ VMwareDvsBackingInfo = vim.vm.device.VirtualEthernetCard.DistributedVirtualPortB
 
 EsxHost = vim.HostSystem
 VmwareContainerView = vim.view.ContainerView
-VMwarePciDeice = vim.host.PciDevice
+VMwarePciDevice = vim.host.PciDevice
 VMwareVirtualMachine = vim.VirtualMachine
 VmwareVirtualNumaInfo = vim.vm.VirtualNumaInfo
 VmwareAffinityInfo = vim.vm.AffinityInfo
@@ -55,6 +55,9 @@ VMwareInvalidLogin = vim.fault.InvalidLogin
 
 
 class PciDeviceClass(Enum):
+    """
+
+    """
     UNDEFINED = 0x00
     MASS_STORAGE_CONTROLLER = 0x01
     NETWORK_CONTROLLER = 0x02
@@ -495,8 +498,7 @@ class VMwareVimState:
             vm_name: str
     ) -> str:
         """
-        Method all retrieves the IP address of the ESXi host
-        where the specified VM is running.
+        Method find an esxi host that runs a VM.
 
         :param vm_name: Name of the VM to find.
         :return: IP address of the ESXi host or a message indicating the VM/host was not found.
@@ -626,6 +628,55 @@ class VMwareVimState:
 
         return self.esxi_host_cache['moId']
 
+    def read_esxi_host(
+            self,
+            identifier: str
+    ) -> vim.HostSystem:
+        """
+        Retrieves an ESXi host system object by its IP address,
+        name, UUID, or host system ID.
+
+        :param identifier: IP address, name, UUID, or
+        host system ID of the ESXi host.
+
+        :Examples:
+        - By IP address: "192.168.1.100"
+        - By name: "esxi-hostname.domain.com"
+        - By UUID: "4c4c4544-004d-5010-805a-b8c04f325732"
+        - By Managed Object ID (moId): "host-12"
+
+        :return: vim.HostSystem object if found, None otherwise.
+        """
+
+        # fetch from the cache
+        for cache_type in self.esxi_host_cache.values():
+            if identifier in cache_type:
+                return cache_type[identifier]
+
+        self.connect_to_vcenter()
+        content = self.si.RetrieveContent()
+        container = content.viewManager.CreateContainerView(
+            content.rootFolder, [vim.HostSystem],
+            True
+        )
+
+        try:
+            for host in container.view:
+                host_name = host.name
+                host_uuid = host.summary.hardware.uuid
+                host_moId = str(host.summary.host)
+
+                self.esxi_host_cache['name'][host_name] = host
+                self.esxi_host_cache['uuid'][host_uuid] = host
+                self.esxi_host_cache['moId'][host_moId] = host
+
+                if identifier in [host_name, host_uuid, host_moId]:
+                    return host
+        finally:
+            container.Destroy()
+
+        raise EsxHostNotFound(f"ESXi host with identifier {identifier} not found.")
+
     def read_esxi_mgmt_address(
             self
     ) -> Dict[str, List[str]]:
@@ -656,81 +707,34 @@ class VMwareVimState:
 
         return host_address
 
-    def read_esxi_host(
-            self,
-            identifier: str
-    ) -> vim.HostSystem:
-        """
-        Retrieves an ESXi host system object by its IP address,
-        name, UUID, or host system ID.
-
-        :param identifier: IP address, name, UUID, or
-        host system ID of the ESXi host.
-
-        :Examples:
-        - By IP address: "192.168.1.100"
-        - By name: "esxi-hostname.domain.com"
-        - By UUID: "4c4c4544-004d-5010-805a-b8c04f325732"
-        - By Managed Object ID (moId): "host-12"
-
-        :return: vim.HostSystem object if found, None otherwise.
-        """
-
-        if self._debug:
-            start_time = time.time()
-
-        # fetch from the cache
-        for cache_type in self.esxi_host_cache.values():
-            if identifier in cache_type:
-                return cache_type[identifier]
-
-        self.connect_to_vcenter()
-        content = self.si.RetrieveContent()
-        container = content.viewManager.CreateContainerView(
-            content.rootFolder, [vim.HostSystem],
-            True
-        )
-
-        try:
-            for host in container.view:
-                host_name = host.name
-                host_uuid = host.summary.hardware.uuid
-                host_moId = str(host.summary.host)
-
-                self.esxi_host_cache['name'][host_name] = host
-                self.esxi_host_cache['uuid'][host_uuid] = host
-                self.esxi_host_cache['moId'][host_moId] = host
-
-                if identifier in [host_name, host_uuid, host_moId]:
-                    return host
-        finally:
-            if self._debug:
-                end_time = time.time()
-                print(f"Execution time "
-                      f"for get_esxi_host_by_identifier: {end_time - start_time} seconds")
-
-            container.Destroy()
-
-        raise EsxHostNotFound(f"ESXi host with identifier {identifier} not found.")
-
     def read_pci_devices(
             self,
-            esxi_host_identifier: str,
-            filter_class: PciDeviceClass = None,
-    ) -> Dict[str, VMwarePciDeice]:
-        """Read a all PCI device.
+            esxi_host_identifier: Optional[str] = None,
+            filter_class: Optional[PciDeviceClass] = None,
+    ) -> Dict[str, VMwarePciDevice]:
+        """Read  all PCI device info from some ESXi if esxi_host_identifier arg supplied
+          where  we find based on identifier. i.e. esxi managed object id, uuid.
+          if identifies is none then method will read PCI devices for all ESXi hosts.
 
-        :return:
+         filter applied in case client need to filter particular PCI device
+         class.
+
+        :param esxi_host_identifier: Optional; ESXi managed object id, uuid. If None, read from all hosts.
+        :param filter_class: Optional; A PCI device class.
+        :return:  a dictionary of PCI device where a key is a PCI device id
+        :raise EsxHostNotFound: if ESXi host with identifier not found
         """
-
         self.connect_to_vcenter()
-        hosts_system = self.read_esxi_hosts()
-        if not hosts_system:
-            raise EsxHostNotFound(
-                f"ESXi host {esxi_host_identifier} not found")
+        if esxi_host_identifier:
+            host_system = self.read_esxi_host(esxi_host_identifier)
+            if not host_system:
+                raise EsxHostNotFound(f"ESXi host {esxi_host_identifier} not found")
+            hosts = {esxi_host_identifier: host_system}
+        else:
+            hosts = self.read_esxi_hosts()
 
-        for k in hosts_system:
-            host_system = hosts_system[str(k)]
+        for k in hosts:
+            host_system = hosts[str(k)]
             self._pci_dev_cache[k] = {}
             for pci_device in host_system.hardware.pciDevice:
                 if filter_class is None or (pci_device.classId >> 8) == filter_class.value:
@@ -742,7 +746,7 @@ class VMwareVimState:
             self,
             esxi_host_identifier: str,
             pci_device_id: str
-    ) -> VMwarePciDeice:
+    ) -> VMwarePciDevice:
         """Find a PCI device by PCI identifier. If no PCI device is found
         return none and if esxi host found will raise EsxHostNotFound.
 
