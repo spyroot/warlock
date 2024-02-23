@@ -1,6 +1,13 @@
 """
-This class represents a VMware VIM  state.  The main purpose of this class
-is to read VMware object VM, host so in down stream task we can mutate.
+This class, VMwareVimState, is designed to encapsulate the state of virtual machines (VMs) within a
+VMware vSphere environment, providing an abstraction layer for managing and retrieving detailed
+information about VMs. The state information includes details such as the ESXi host on which a
+VM is running, NUMA node allocation, various configuration parameters, and network attachment
+details including SR-IOV Virtual
+
+Functions (VFs), Physical Functions (PFs), network interface cards (NICs),
+ and their respective  drivers and firmware versions.
+
 
 Author: Mus
  spyroot@gmail.com
@@ -49,14 +56,8 @@ VmwareVcpuConfig = vim.vm.VcpuConfig
 VMwareInvalidLogin = vim.fault.InvalidLogin
 
 
-# if isinstance(vim_obj, vim.option.OptionValue):
-#     # Directly handle OptionValue types to convert them into a key-value pair
-#     return {vim_obj.key: vim_obj.value}
-
-
 class PciDeviceClass(Enum):
     """
-
     """
     UNDEFINED = 0x00
     MASS_STORAGE_CONTROLLER = 0x01
@@ -554,7 +555,7 @@ class VMwareVimState:
                 pci_id = device.sriovBacking.physicalFunctionBacking.id if (
                     hasattr(device.sriovBacking, 'physicalFunctionBacking')) else None
                 if pci_id:
-                    pci_info = self.get_pci_device_info(esxi_host, pci_id)
+                    pci_info = self.get_pci_net_device_info(esxi_host, pci_id)
                     adapter_info = {
                         'label': device.deviceInfo.label,
                         'switchUuid': device.backing.port.switchUuid if hasattr(device.backing, 'port') else None,
@@ -746,20 +747,17 @@ class VMwareVimState:
             self,
             esxi_host_identifier: str,
             pci_device_id: str
-    ) -> VMwarePciDevice:
+    ) -> Union[None, VMwarePciDevice]:
         """Find a PCI device by PCI identifier. If no PCI device is found
         return none and if esxi host found will raise EsxHostNotFound.
 
         All PCI device added to internal cache, and follow-up request
         to a same device return from a cache.
-        :return:
+        :return:VMwarePciDevice
+        :raises EsxHostNotFound if ESX host not found
         """
-
-        if esxi_host_identifier in self._pci_dev_cache:
-            if pci_device_id in self._pci_dev_cache[esxi_host_identifier]:
-                return self._pci_dev_cache[esxi_host_identifier][pci_device_id]
-        else:
-            self._pci_dev_cache[esxi_host_identifier] = {}
+        if esxi_host_identifier in self._pci_dev_cache and pci_device_id in self._pci_dev_cache[esxi_host_identifier]:
+            return self._pci_dev_cache[esxi_host_identifier][pci_device_id]
 
         self.connect_to_vcenter()
         host_system = self.read_esxi_host(esxi_host_identifier)
@@ -767,14 +765,14 @@ class VMwareVimState:
             raise EsxHostNotFound(
                 f"ESXi host {esxi_host_identifier} not found")
 
-        pci_info = None
         for pci_device in host_system.hardware.pciDevice:
-            self._pci_dev_cache[esxi_host_identifier][pci_device_id] = pci_device
             if pci_device.id == pci_device_id:
-                pci_info = pci_device
-                break
+                if esxi_host_identifier not in self._pci_dev_cache:
+                    self._pci_dev_cache[esxi_host_identifier] = {}
+                self._pci_dev_cache[esxi_host_identifier][pci_device_id] = pci_device
+                return pci_device
 
-        return pci_info
+        return None
 
     def read_esxi_host_pnic(
             self,
@@ -859,94 +857,62 @@ class VMwareVimState:
 
         return None, None
 
-    def get_pci_device_info(
+    def get_pci_net_device_info(
             self,
-            esxi_host_ip: str,
+            esxi_host_identified: str,
             pci_device_id: str
     ):
         """
-        Take ESXi host IP and PCI device and return a pci device.
+        Retrieve detailed information for a specified PCI Network device on a given ESXi host.
+        This method returns a dictionary containing the following keys and their associated values:
 
-        (vim.host.PciDevice) {
-                       dynamicType = <unset>,
-                       dynamicProperty = (vmodl.DynamicProperty) [],
-                       id = '0000:88:00.0',
-                       classId = 512,
-                       bus = -120,
-                       slot = 0,
-                       function = 0,
-                       vendorId = -32634,
-                       subVendorId = -32634,
-                       vendorName = 'Intel(R)',
-                       deviceId = 5515,
-                       subDeviceId = 9,
-                       parentBridge = '0000:85:02.0',
-                       deviceName = 'Ethernet Controller XXV710 for 25GbE SFP28'
-        }
+        - "deviceName": The name of the device (e.g., "Ethernet Controller X550").
+        - "driver": The name of the driver (e.g., "ixgben").
+        - "driver_firmware": Firmware version of the driver (e.g., "3.30 0x800014a5, 20.5.13").
+        - "driver_version": Version of the driver (e.g., "1.15.1.0").
+        - "id": PCI device ID (e.g., "0000:1a:00.0").
+        - "is_connected": Boolean indicating if the device is connected (true or false).
+        - "mac": MAC address of the device (e.g., "e4:43:4b:62:e9:fc").
+        - "pNIC": Physical NIC associated with the PCI device (e.g., "vmnic0").
+        - "pnic_vendor": Vendor information for the pNIC (e.g., "0000:1a:00.0 - Intel(R) Ethernet Controller X550").
+        - "speed": Speed of the connection in Mbps (e.g., 10000).
+        - "vendorName": Name of the device vendor (e.g., "Intel(R)").
 
-        :param esxi_host_ip: string an esxi host IP or UUID or moid
+        :param esxi_host_identified: string an esxi host IP or UUID or moid
         :param pci_device_id: pci device.
         :return:
         """
-        if self._debug:
-            start_time = time.time()
-
         self.connect_to_vcenter()
-        host_system = self.read_esxi_host(esxi_host_ip)
+        host_system = self.read_esxi_host(esxi_host_identified)
 
         if not host_system:
-            return f"Host {esxi_host_ip} not found."
+            return f"Host {esxi_host_identified} not found."
 
-        pci_info = self.find_pci_device(esxi_host_ip, pci_device_id)
+        pci_info = self.find_pci_device(
+            esxi_host_identified, pci_device_id
+        )
         if pci_info is None:
             raise PciDeviceNotFound(pci_device_id)
 
-        print("pci vendor")
         pci_device_vendor_and_dev = f"{pci_info.id} - {pci_info.vendorName} {pci_info.deviceName}"
-        pnic_name, pnic_info_dict = self.find_esxi_host_pnic(esxi_host_ip, pci_device_id)
+        pnic_name, pnic_info_dict = self.find_esxi_host_pnic(esxi_host_identified, pci_device_id)
         pnic_info_dict["pnic_vendor"] = pci_device_vendor_and_dev
-        print(f"pnic name {pnic_name}")
-        print(f"pnic info {pnic_info_dict}")
 
-        raise
-
-        driver = ""
-        if pci_info:
-            pnic_info = None
-            for pnic in host_system.config.network.pnic:
-                if hasattr(pnic, 'pci') and pnic.pci == pci_device_id:
-                    pnic_info = pnic
-                    driver = pnic.driver if hasattr(pnic, 'driver') else "Unknown"
-                    break
-
-            if self._debug:
-                end_time = time.time()
-                print(
-                    f"Execution time for get_pci_device_info "
-                    f"pci device {pci_device_id}: {end_time - start_time} seconds."
-                )
-
-            if pnic_info:
-                return {
-                    "mac": pnic_info.mac,
-                    "id": pci_info.id,
-                    "deviceName": pci_info.deviceName,
-                    "vendorName": pci_info.vendorName,
-                    "pNIC": pnic_info.device,
-                    "driver": driver,
-                }
-            else:
-                return {
-                    "mac": "Not found",
-                    "id": pci_info.id,
-                    "deviceName": pci_info.deviceName,
-                    "vendorName": pci_info.vendorName,
-                    "pNIC": "Not found",
-                    "driver": driver,
-                }
-
-        else:
-            return f"PCI device {pci_device_id} not found on host {esxi_host_ip}."
+        # Prepare the final dictionary combining PCI device and pNIC information
+        pci_pnic_info = {
+            "mac": pnic_info_dict.get("mac", "Not found"),
+            "id": pci_info.id,
+            "deviceName": pci_info.deviceName,
+            "vendorName": pci_info.vendorName,
+            "pNIC": pnic_name,
+            "driver": pnic_info_dict.get("driver", "Unknown"),
+            "driver_version": pnic_info_dict.get("driver_version", "Unknown"),
+            "driver_firmware": pnic_info_dict.get("driver_firmware", "Unknown"),
+            "speed": pnic_info_dict.get("speed", 0),
+            "is_connected": pnic_info_dict.get("is_connected", False),
+            "pnic_vendor": f"{pci_info.id} - {pci_info.vendorName} {pci_info.deviceName}"
+        }
+        return pci_pnic_info
 
     def vm_state(self, vm_name):
         """

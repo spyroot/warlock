@@ -11,7 +11,13 @@ import os
 import unittest
 import time
 
-from warlock.vm_state import VMwareVimState, SwitchNotFound, EsxHostNotFound, VMNotFoundException, PciDeviceClass
+from warlock.vm_state import (
+    VMwareVimState,
+    SwitchNotFound,
+    EsxHostNotFound,
+    VMNotFoundException,
+    PciDeviceClass, VMwareVirtualMachine
+)
 
 
 class TestVMwareVimState(unittest.TestCase):
@@ -23,8 +29,10 @@ class TestVMwareVimState(unittest.TestCase):
         vcenter_ip = os.getenv('VCENTER_IP', 'default')
         username = os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local')
         password = os.getenv('VCENTER_PASSWORD', 'default')
-        self._test_vm_name = os.getenv('TEST_VM_NAME', 'default')
-        self._test_vm_substring = os.getenv('TEST_VMS_SUBSTRING', 'default')
+
+        # a test VM that we know exists
+        self._test_valid_vm_name = os.getenv('TEST_VM_NAME', 'default')
+        self._test_valid_vm_substring = os.getenv('TEST_VMS_SUBSTRING', 'default')
 
         ssh_executor = None
         self.vmware_vim_state = VMwareVimState.from_optional_credentials(
@@ -32,6 +40,17 @@ class TestVMwareVimState(unittest.TestCase):
             username=username,
             password=password
         )
+
+    def test_container_view(self):
+        """Test retrieving a container view."""
+        obj_type = [VMwareVirtualMachine]
+        with self.vmware_vim_state._container_view(obj_type) as container:
+            self.assertIsNotNone(container, "Container view should not be None")
+
+    def test_dvs_container_view(self):
+        """Test retrieving a DVS container view."""
+        with self.vmware_vim_state._dvs_container_view() as container:
+            self.assertIsNotNone(container, "DVS container view should not be None")
 
     def test_find_by_dns_name_returns_none(self):
         """Basic test for _find_by_dns_name to ensure
@@ -49,19 +68,19 @@ class TestVMwareVimState(unittest.TestCase):
         it returns a VM and caches it correctly.
         :return:
         """
-        _vm = self.vmware_vim_state._find_by_dns_name(self._test_vm_name)
+        _vm = self.vmware_vim_state._find_by_dns_name(self._test_valid_vm_name)
         self.assertIsNotNone(
             _vm,
             "The VM object returned by _find_by_dns_name should not be None"
         )
         self.assertIn(
-            self._test_vm_name,
+            self._test_valid_vm_name,
             self.vmware_vim_state._vm_cache,
-            f"The key '{self._test_vm_name}' should be in the _vm_cache"
+            f"The key '{self._test_valid_vm_name}' should be in the _vm_cache"
         )
         self.assertIsNotNone(
-            self.vmware_vim_state._vm_cache[self._test_vm_name],
-            f"The object in _vm_cache for key '{self._test_vm_name}' should not be None"
+            self.vmware_vim_state._vm_cache[self._test_valid_vm_name],
+            f"The object in _vm_cache for key '{self._test_valid_vm_name}' should not be None"
         )
 
     def test_cached_find_by_dns_name_returns_vm(self):
@@ -70,9 +89,9 @@ class TestVMwareVimState(unittest.TestCase):
         :return:
         """
 
-        self.vmware_vim_state._vm_cache.pop(self._test_vm_name, None)
+        self.vmware_vim_state._vm_cache.pop(self._test_valid_vm_name, None)
         start_time_first_call = time.time()
-        first_vm = self.vmware_vim_state._find_by_dns_name(self._test_vm_name)
+        first_vm = self.vmware_vim_state._find_by_dns_name(self._test_valid_vm_name)
         end_time_first_call = time.time()
 
         self.assertIsNotNone(
@@ -80,16 +99,16 @@ class TestVMwareVimState(unittest.TestCase):
             "The VM object returned by _find_by_dns_name should not be None after the first call"
         )
         self.assertIn(
-            self._test_vm_name, self.vmware_vim_state._vm_cache,
-            f"The key '{self._test_vm_name}' should be in the _vm_cache after the first call"
+            self._test_valid_vm_name, self.vmware_vim_state._vm_cache,
+            f"The key '{self._test_valid_vm_name}' should be in the _vm_cache after the first call"
         )
 
         self.assertIsNotNone(
-            self.vmware_vim_state._vm_cache[self._test_vm_name],
-            f"The object in _vm_cache for key '{self._test_vm_name}' should not be None")
+            self.vmware_vim_state._vm_cache[self._test_valid_vm_name],
+            f"The object in _vm_cache for key '{self._test_valid_vm_name}' should not be None")
 
         start_time_second_call = time.time()
-        second_vm = self.vmware_vim_state._find_by_dns_name(self._test_vm_name)
+        second_vm = self.vmware_vim_state._find_by_dns_name(self._test_valid_vm_name)
         end_time_second_call = time.time()
 
         self.assertIsNotNone(
@@ -110,7 +129,7 @@ class TestVMwareVimState(unittest.TestCase):
         """Basic test for find_by_dns_name
         :return:
         """
-        _vm_uuid = self.vmware_vim_state.read_vm_uuid(self._test_vm_name)
+        _vm_uuid = self.vmware_vim_state.read_vm_uuid(self._test_valid_vm_name)
         self.assertIsNotNone(
             _vm_uuid,
             "The VM object returned by read_vm_uuid should not be None"
@@ -139,7 +158,7 @@ class TestVMwareVimState(unittest.TestCase):
         """Basic test for find_by_dns_name
         :return:
         """
-        _vm_numa_info = self.vmware_vim_state.read_vm_numa_info(self._test_vm_name)
+        _vm_numa_info = self.vmware_vim_state.read_vm_numa_info(self._test_valid_vm_name)
         self.assertIsNotNone(
             _vm_numa_info,
             "The VM numa info returned by read_vm_numa_info should not be None"
@@ -154,7 +173,7 @@ class TestVMwareVimState(unittest.TestCase):
         """Basic test for find_by_dns_name
         :return:
         """
-        _vm_extra_config = self.vmware_vim_state.read_vm_extra_config(self._test_vm_name)
+        _vm_extra_config = self.vmware_vim_state.read_vm_extra_config(self._test_valid_vm_name)
         self.assertIsNotNone(
             _vm_extra_config,
             "The VM extra info returned by read_vm_extra_config should not be None"
@@ -172,7 +191,7 @@ class TestVMwareVimState(unittest.TestCase):
         """Basic test to find vms by some string
         :return:
         """
-        found_vms, found_vm_config = self.vmware_vim_state.find_vm_by_name_substring(self._test_vm_substring)
+        found_vms, found_vm_config = self.vmware_vim_state.find_vm_by_name_substring(self._test_valid_vm_substring)
         self.assertIsNotNone(
             found_vms,
             "found VMs should not be None"
@@ -182,7 +201,7 @@ class TestVMwareVimState(unittest.TestCase):
             "found VMs confing should not be None"
         )
 
-        cache_result = self.vmware_vim_state._vm_search_cache[self._test_vm_substring]
+        cache_result = self.vmware_vim_state._vm_search_cache[self._test_valid_vm_substring]
         self.assertIsNotNone(
             cache_result,
             "Search result should be cached"
@@ -204,7 +223,7 @@ class TestVMwareVimState(unittest.TestCase):
 
         self.vmware_vim_state._vm_search_cache = {}
         start_time_first_call = time.time()
-        found_vms, found_vm_config = self.vmware_vim_state.find_vm_by_name_substring(self._test_vm_substring)
+        found_vms, found_vm_config = self.vmware_vim_state.find_vm_by_name_substring(self._test_valid_vm_substring)
         end_time_first_call = time.time()
 
         self.assertIsNotNone(
@@ -218,7 +237,7 @@ class TestVMwareVimState(unittest.TestCase):
 
         start_time_second_call = time.time()
         found_cache_vms, found_cached_vms_config = self.vmware_vim_state.find_vm_by_name_substring(
-            self._test_vm_substring)
+            self._test_valid_vm_substring)
         end_time_second_call = time.time()
 
         self.assertIsNotNone(
@@ -397,7 +416,7 @@ class TestVMwareVimState(unittest.TestCase):
         """Tests a read vm's  pnic information
         :return:
         """
-        vm_pnic_data = self.vmware_vim_state.read_vm_pnic_info(self._test_vm_name)
+        vm_pnic_data = self.vmware_vim_state.read_vm_pnic_info(self._test_valid_vm_name)
         self.assertIsNotNone(vm_pnic_data, "read_vm_pnic_info should not return None")
         self.assertIsInstance(vm_pnic_data, dict, "'host pnic' should be a Dictionary")
 
@@ -412,7 +431,7 @@ class TestVMwareVimState(unittest.TestCase):
         """Tests a resolve esxi host from vm
         :return:
         """
-        vm_pnic_data = self.vmware_vim_state.get_esxi_ip_of_vm(self._test_vm_name)
+        vm_pnic_data = self.vmware_vim_state.get_esxi_ip_of_vm(self._test_valid_vm_name)
         self.assertIsNotNone(vm_pnic_data, "get_esxi_ip_of_vm should not return None")
 
     def test_read_pci_devices_with_valid_host(self):
@@ -441,3 +460,102 @@ class TestVMwareVimState(unittest.TestCase):
                 self.assertEqual((pci_device.classId >> 8), filter_class.value,
                                  f"PCI device {device_id} on host {host_id} should "
                                  f"match the filter class {filter_class.name}")
+
+    def test_find_pci_device_valid(self):
+        """Test finding a valid PCI device on a specific host."""
+        pci_devices = self.vmware_vim_state.read_pci_devices()
+
+        sample_host_id = next(iter(pci_devices))
+        sample_device_id = next(iter(pci_devices[sample_host_id]))
+
+        #  Attempt to find the sampled PCI device
+        found_device = self.vmware_vim_state.find_pci_device(sample_host_id, sample_device_id)
+
+        self.assertIsNotNone(found_device, "The PCI device should be found")
+        self.assertEqual(found_device.id, sample_device_id,
+                         "The found PCI device ID should match the sampled device ID")
+
+    def test_find_pci_device_invalid_host(self):
+        """Test finding a PCI device with a non-existent host identifier."""
+        with self.assertRaises(EsxHostNotFound):
+            self.vmware_vim_state.find_pci_device("invalid_host_id", "some_device_id")
+
+    def test_find_pci_device_invalid_device(self):
+        """Test finding a non-existent PCI device on a valid host."""
+        pci_devices = self.vmware_vim_state.read_pci_devices()
+        sample_host_id = next(iter(pci_devices))
+
+        self.assertIsNone(
+            self.vmware_vim_state.find_pci_device(sample_host_id, "invalid_device_id"),
+            "Finding a non-existent PCI device should return None"
+        )
+
+    def test_find_pci_device_caching(self):
+        """Test that find_pci_device correctly caches found PCI devices."""
+
+        pci_devices = self.vmware_vim_state.read_pci_devices()
+        esxi_host_identifier = next(iter(pci_devices))
+        pci_device_id = next(iter(pci_devices[esxi_host_identifier]))
+        self.vmware_vim_state._pci_dev_cache = {}
+        self.assertNotIn(
+            esxi_host_identifier,
+            self.vmware_vim_state._pci_dev_cache,
+            "Host should initially not be in the cache"
+        )
+
+        pci_device = self.vmware_vim_state.find_pci_device(
+            esxi_host_identifier,
+            pci_device_id
+        )
+
+        self.assertIn(
+            esxi_host_identifier,
+            self.vmware_vim_state._pci_dev_cache,
+            "Host should now be in the cache"
+        )
+        self.assertIn(
+            pci_device_id,
+            self.vmware_vim_state._pci_dev_cache[esxi_host_identifier],
+            "PCI device should be cached under the correct host"
+        )
+
+        cached_device = self.vmware_vim_state._pci_dev_cache[esxi_host_identifier][pci_device_id]
+        self.assertEqual(
+            pci_device,
+            cached_device,
+            "The cached PCI device should match the one returned by the method"
+        )
+
+    def test_get_pci_net_device_info(self):
+        """Test pci net device info
+        :return:
+        """
+        # we use network card to test
+        filter_class = PciDeviceClass.NETWORK_CONTROLLER
+        pci_devices = self.vmware_vim_state.read_pci_devices(
+            esxi_host_identifier=None, filter_class=filter_class
+        )
+        _esxi_host_identifier = next(iter(pci_devices))
+        _pci_device_id = next(iter(pci_devices[_esxi_host_identifier]))
+
+        pci_pnic_info = self.vmware_vim_state.get_pci_net_device_info(
+            _esxi_host_identifier, _pci_device_id
+        )
+
+        self.assertIsInstance(pci_pnic_info, dict, "The returned object should be a dictionary.")
+        expected_keys = ["mac", "id", "deviceName",
+                         "vendorName", "pNIC", "driver",
+                         "driver_version", "driver_firmware",
+                         "speed", "is_connected", "pnic_vendor"]
+
+        for key in expected_keys:
+            self.assertIn(
+                key, pci_pnic_info,
+                f"The key '{key}' should be present in the returned dictionary."
+            )
+
+        self.assertIsNotNone(pci_pnic_info['mac'], "MAC address should not be None.")
+        self.assertTrue(isinstance(pci_pnic_info['speed'], int)
+                        and pci_pnic_info['speed'] > 0,
+                        "Speed should be a positive integer.")
+        self.assertIn(pci_pnic_info['is_connected'], [True, False], "is_connected should be a boolean.")

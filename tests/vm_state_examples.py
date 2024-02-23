@@ -71,7 +71,7 @@ def example_vms_sriov_nics(vm_name="vf-test-np1"):
 
     vms, vms_config = vmware_vim_state.find_vm_by_name_substring(vm_name)
     esxi_host = vmware_vim_state.get_esxi_ip_of_vm(vms[0])
-    pci_info = vmware_vim_state.get_pci_device_info(esxi_host, '0000:88:00.0')
+    pci_info = vmware_vim_state.get_pci_net_device_info(esxi_host, '0000:88:00.0')
     print("Pnic INFO")
     print(pci_info)
 
