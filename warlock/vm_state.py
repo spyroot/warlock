@@ -8,6 +8,7 @@ Author: Mus
 """
 import json
 import os
+from enum import Enum
 from typing import (
     Dict,
     Optional,
@@ -33,6 +34,8 @@ VMConfigInfo = vim.vm.ConfigInfo
 VirtualHardwareInfo = vim.vm.VirtualHardware
 DistributedVirtualSwitch = vim.dvs.VmwareDistributedVirtualSwitch
 DistributedVirtualSwitchConfig = vim.dvs.VmwareDistributedVirtualSwitch.ConfigInfo
+VMwareDvsBackingInfo = vim.vm.device.VirtualEthernetCard.DistributedVirtualPortBackingInfo
+
 EsxHost = vim.HostSystem
 VmwareContainerView = vim.view.ContainerView
 VMwarePciDeice = vim.host.PciDevice
@@ -43,10 +46,19 @@ VmwareVgpuProfileInfo = vim.vm.VgpuProfileInfo
 VmwareSriovInfo = vim.vm.SriovInfo
 VmwareVcpuConfig = vim.vm.VcpuConfig
 
+VMwareInvalidLogin = vim.fault.InvalidLogin
+
 
 # if isinstance(vim_obj, vim.option.OptionValue):
 #     # Directly handle OptionValue types to convert them into a key-value pair
 #     return {vim_obj.key: vim_obj.value}
+
+
+class PciDeviceClass(Enum):
+    UNDEFINED = 0x00
+    MASS_STORAGE_CONTROLLER = 0x01
+    NETWORK_CONTROLLER = 0x02
+    DISPLAY_CONTROLLER = 0x03
 
 
 class VMwareVimStateException(Exception):
@@ -152,12 +164,17 @@ class VMwareVimState:
         """Connect to the vCenter server and store the connection instance."""
         if not self.si:
             context = ssl._create_unverified_context()
-            self.si = SmartConnect(
-                host=self.vcenter_ip,
-                user=self.username,
-                pwd=self.password,
-                sslContext=context
-            )
+            try:
+                self.si = SmartConnect(
+                    host=self.vcenter_ip,
+                    user=self.username,
+                    pwd=self.password,
+                    sslContext=context
+                )
+            except VMwareInvalidLogin as e:
+                print(f"Failed to login to {self.vcenter_ip} vCenter server. Please check your credentials.")
+                raise e
+
             atexit.register(Disconnect, self.si)
 
     @classmethod
@@ -179,7 +196,7 @@ class VMwareVimState:
         vcenter_ip = vcenter_ip or os.getenv('VCENTER_IP')
         username = username or os.getenv('VCENTER_USERNAME')
         password = password or os.getenv('VCENTER_PASSWORD')
-        return cls(ssh_executor, None, vcenter_ip, username, password)
+        return cls(ssh_executor, None, vcenter_ip.strip(), username.strip(), password.strip())
 
     @contextmanager
     def _dvs_container_view(
@@ -325,7 +342,24 @@ class VMwareVimState:
         self._vm_search_cache[name_substring] = (found_vms, found_vm_config)
         return found_vms, found_vm_config
 
-    def get_dvs_pnics_by_switch_uuid(
+    def read_all_dvs_specs(
+            self
+    ) -> Dict[
+        str,
+        vim.DistributedVirtualSwitch
+    ]:
+        """
+        Retrieve all Distributed Virtual Switch (DVS).
+        :return: a dictionary of all dvs where key is DVS uuid string.
+        """
+
+        with self._dvs_container_view() as ctx:
+            for dvs in ctx.view:
+                self._dvs_uuid_to_dvs[dvs.uuid] = dvs
+
+        return self._dvs_uuid_to_dvs
+
+    def read_dvs_pnics_by_switch_uuid(
             self,
             switch_uuid: str
     ) -> Dict[str, List[str]]:
@@ -344,53 +378,30 @@ class VMwareVimState:
 
         :param switch_uuid: The UUID of the Distributed Virtual Switch.
         :return: A dictionary where keys are host identifiers and values are lists of pNICs.
+        :raises SwitchNotFound: If no DVS with the given UUID is found.
         """
-        if self._debug:
-            start_time = time.time()
-
         dvs_pnics_by_host = {}
-        with self._dvs_container_view() as container:
-            for dvs in container.view:
-                if dvs.config.uuid == switch_uuid:
-                    for host_member in dvs.config.host:
-                        if (hasattr(host_member, 'config')
-                                and hasattr(host_member.config, 'host') and host_member.config.host):
-                            host_id = host_member.config.host
-                            host_name = getattr(host_member.config.host, 'name', 'Unknown Host')
+        _dvs, _dvs_config = self.get_dvs_by_uuid(switch_uuid)
 
-                            self._host_name_to_id[host_name] = str(host_id)
-                            self._host_id_to_name[str(host_id)] = host_name
+        for host_member in _dvs_config.host:
+            if (hasattr(host_member, 'config')
+                    and hasattr(host_member.config, 'host') and host_member.config.host):
+                host_id = host_member.config.host
+                host_name = getattr(host_member.config.host, 'name', 'Unknown Host')
 
-                            if host_name not in dvs_pnics_by_host:
-                                dvs_pnics_by_host[host_name] = []
+                self._host_name_to_id[host_name] = str(host_id)
+                self._host_id_to_name[str(host_id)] = host_name
 
-                            # we take pnic from backing config
-                            if (hasattr(host_member.config, 'backing')
-                                    and hasattr(host_member.config.backing, 'pnicSpec')):
-                                for pnic_spec in host_member.config.backing.pnicSpec:
-                                    dvs_pnics_by_host[host_name].append(pnic_spec.pnicDevice)
+                if host_name not in dvs_pnics_by_host:
+                    dvs_pnics_by_host[host_name] = []
 
-        if self._debug:
-            end_time = time.time()
-            print(f"Execution time for get_dvs_pnics_by_switch_uuid: {end_time - start_time} seconds")
+                # we take pnic from backing config
+                if (hasattr(host_member.config, 'backing')
+                        and hasattr(host_member.config.backing, 'pnicSpec')):
+                    for pnic_spec in host_member.config.backing.pnicSpec:
+                        dvs_pnics_by_host[host_name].append(pnic_spec.pnicDevice)
 
         return dvs_pnics_by_host
-
-    def read_all_dvs_specs(
-            self
-    ) -> Dict[
-        str, vim.DistributedVirtualSwitch
-    ]:
-        """
-        Retrieve all Distributed Virtual Switch (DVS).
-        :return: a dictionary of all dvs where key is DVS uuid string.
-        """
-
-        with self._dvs_container_view() as ctx:
-            for dvs in ctx.view:
-                self._dvs_uuid_to_dvs[dvs.uuid] = dvs
-
-        return self._dvs_uuid_to_dvs
 
     def get_dvs_by_uuid(
             self,
@@ -408,9 +419,6 @@ class VMwareVimState:
         """
 
         self.connect_to_vcenter()
-
-        if self._debug:
-            start_time = time.time()
 
         # fetch from cache
         if dvs_uuid in self._dvs_uuid_to_dvs:
@@ -430,9 +438,6 @@ class VMwareVimState:
                     return dvs, dvs.config
         finally:
             container.Destroy()
-            if self._debug:
-                end_time = time.time()
-                print(f"Execution time for get_dvs_by_uuid: {end_time - start_time} seconds")
 
         raise SwitchNotFound(dvs_uuid)
 
@@ -453,7 +458,7 @@ class VMwareVimState:
                 return portgroup
         return None
 
-    def vm_pnic_info(
+    def read_vm_pnic_info(
             self,
             vm_name: str
     ):
@@ -464,13 +469,9 @@ class VMwareVimState:
         :param vm_name: virtual machine name
         :return:
         """
-
-        if self._debug:
-            start_time = time.time()
-
         self.connect_to_vcenter()
-        vm = self._find_by_dns_name(vm_name)
 
+        vm = self._find_by_dns_name(vm_name)
         if not vm:
             raise VMNotFoundException(vm_name)
 
@@ -479,17 +480,13 @@ class VMwareVimState:
 
         for device in vm.config.hardware.device:
             if isinstance(device, vim.vm.device.VirtualEthernetCard) and \
-                    isinstance(device.backing, vim.vm.device.VirtualEthernetCard.DistributedVirtualPortBackingInfo):
+                    isinstance(device.backing, VMwareDvsBackingInfo):
                 if hasattr(device.backing, 'port') and hasattr(device.backing.port, 'switchUuid'):
                     switch_uuid = device.backing.port.switchUuid
                     if switch_uuid not in processed_switches:
-                        vm_network_data = self.get_dvs_pnics_by_switch_uuid(switch_uuid)
+                        vm_network_data = self.read_dvs_pnics_by_switch_uuid(switch_uuid)
                         all_vm_network_data[switch_uuid] = vm_network_data
                         processed_switches.add(switch_uuid)
-
-        if self._debug:
-            end_time = time.time()
-            print(f"Execution time for vm_pnic_info: {end_time - start_time} seconds")
 
         return all_vm_network_data
 
@@ -653,7 +650,8 @@ class VMwareVimState:
         esxi_hosts = self.read_esxi_hosts()
         host_address = {}
         for h in esxi_hosts:
-            ip_address = [v.spec.ip.ipAddress for v in esxi_hosts[h].config.network.vnic]
+            ip_address = [v.spec.ip.ipAddress for
+                          v in esxi_hosts[h].config.network.vnic]
             host_address[h] = ip_address
 
         return host_address
@@ -666,7 +664,8 @@ class VMwareVimState:
         Retrieves an ESXi host system object by its IP address,
         name, UUID, or host system ID.
 
-        :param identifier: IP address, name, UUID, or host system ID of the ESXi host.
+        :param identifier: IP address, name, UUID, or
+        host system ID of the ESXi host.
 
         :Examples:
         - By IP address: "192.168.1.100"
@@ -714,9 +713,34 @@ class VMwareVimState:
 
         raise EsxHostNotFound(f"ESXi host with identifier {identifier} not found.")
 
+    def read_pci_devices(
+            self,
+            esxi_host_identifier: str,
+            filter_class: PciDeviceClass = None,
+    ) -> Dict[str, VMwarePciDeice]:
+        """Read a all PCI device.
+
+        :return:
+        """
+
+        self.connect_to_vcenter()
+        hosts_system = self.read_esxi_hosts()
+        if not hosts_system:
+            raise EsxHostNotFound(
+                f"ESXi host {esxi_host_identifier} not found")
+
+        for k in hosts_system:
+            host_system = hosts_system[str(k)]
+            self._pci_dev_cache[k] = {}
+            for pci_device in host_system.hardware.pciDevice:
+                if filter_class is None or (pci_device.classId >> 8) == filter_class.value:
+                    self._pci_dev_cache[str(k)][pci_device.id] = pci_device
+
+        return self._pci_dev_cache
+
     def find_pci_device(
             self,
-            esxi_host_identified: str,
+            esxi_host_identifier: str,
             pci_device_id: str
     ) -> VMwarePciDeice:
         """Find a PCI device by PCI identifier. If no PCI device is found
@@ -727,67 +751,100 @@ class VMwareVimState:
         :return:
         """
 
-        if esxi_host_identified in self._pci_dev_cache:
-            if pci_device_id in self._pci_dev_cache[esxi_host_identified]:
-                return self._pci_dev_cache[esxi_host_identified][pci_device_id]
+        if esxi_host_identifier in self._pci_dev_cache:
+            if pci_device_id in self._pci_dev_cache[esxi_host_identifier]:
+                return self._pci_dev_cache[esxi_host_identifier][pci_device_id]
         else:
-            self._pci_dev_cache[esxi_host_identified] = {}
+            self._pci_dev_cache[esxi_host_identifier] = {}
 
         self.connect_to_vcenter()
-        host_system = self.read_esxi_host(esxi_host_identified)
+        host_system = self.read_esxi_host(esxi_host_identifier)
         if not host_system:
             raise EsxHostNotFound(
-                f"ESXi host {esxi_host_identified} not found")
+                f"ESXi host {esxi_host_identifier} not found")
 
         pci_info = None
         for pci_device in host_system.hardware.pciDevice:
-            self._pci_dev_cache[esxi_host_identified][pci_device_id] = pci_device
+            self._pci_dev_cache[esxi_host_identifier][pci_device_id] = pci_device
             if pci_device.id == pci_device_id:
                 pci_info = pci_device
                 break
 
         return pci_info
 
-    def fetch_esxi_host_pnic(
+    def read_esxi_host_pnic(
             self,
-            esxi_host_identified
+            esxi_identifier: str
     ) -> Dict[str, Dict[str, str]]:
-        """Fetch esxi host pnic information.
+        """Reads esxi host pnic information.
 
+        The dictionary returned contains the following information:
+
+        :Examples:
+
+        "vmnic0": {
+                "pci": "0000:1a:00.0",
+                "mac": "e4:43:4b:62:e9:fc",
+                "driver": "ixgben",
+                "driver_version": "1.15.1.0",
+                "driver_firmware": "3.30 0x800014a5, 20.5.13"
+        }
+
+        :param esxi_identifier: esxi host identifier. (UUID, name etc.)
         :return: dictionary where key is esxi host identified
+        :raises EsxHostNotFound: If the ESXi host is not found.
         """
-        if esxi_host_identified in self._host_device_pnic:
-            return self._host_device_pnic[esxi_host_identified]
+        if esxi_identifier in self._host_device_pnic:
+            return self._host_device_pnic[esxi_identifier]
         else:
-            self._host_device_pnic[esxi_host_identified] = {}
+            self._host_device_pnic[esxi_identifier] = {}
 
         self.connect_to_vcenter()
-        host_system = self.read_esxi_host(esxi_host_identified)
+        host_system = self.read_esxi_host(esxi_identifier)
 
         for pnic in host_system.config.network.pnic:
-            self._host_device_pnic[esxi_host_identified][pnic.device] = {
+            self._host_device_pnic[esxi_identifier][pnic.device] = {
                 "pci": pnic.pci,
                 'mac': pnic.mac,
                 "driver": pnic.driver,
                 "driver_version": pnic.driverVersion,
                 "driver_firmware": pnic.firmwareVersion,
+                "speed": pnic.linkSpeed.speedMb if pnic.linkSpeed else None,
+                "is_connected": True if pnic.linkSpeed else False
             }
 
-        return self._host_device_pnic[esxi_host_identified]
+        return self._host_device_pnic[esxi_identifier]
 
     def find_esxi_host_pnic(
             self,
             esxi_host_identified: str,
             pci_device: str
-    ):
-        """Find a pnic device by pci device id.
+    ) -> Union[
+        Tuple[None, None],
+        Tuple[str, Dict[str, str]]
+    ]:
+        """Method search for a pnic device based on pci device id.
+        Example of return data
+
+        :Examples:
+
+        "vmnic0",
+        {
+            "pci": "0000:1a:00.0",
+            "mac": "e4:43:4b:62:e9:fc",
+            "driver": "ixgben",
+            "driver_version": "1.15.1.0",
+            "driver_firmware": "3.30 0x800014a5, 20.5.13",
+            "speed": 10000,
+            "is_connected": true
+        }
 
         :param esxi_host_identified: an esxi host identifier.
         :param pci_device:  a pci device id
         :return: dictionary where key is pnic name
         """
         if esxi_host_identified not in self._host_device_pnic:
-            host_pnic_dict = self.fetch_esxi_host_pnic(esxi_host_identified)
+            host_pnic_dict = self.read_esxi_host_pnic(esxi_host_identified)
         else:
             host_pnic_dict = self._host_device_pnic[esxi_host_identified]
 
@@ -804,8 +861,9 @@ class VMwareVimState:
             pci_device_id: str
     ):
         """
-        Take ESXi host IP and PCI device and return a pci device
-                (vim.host.PciDevice) {
+        Take ESXi host IP and PCI device and return a pci device.
+
+        (vim.host.PciDevice) {
                        dynamicType = <unset>,
                        dynamicProperty = (vmodl.DynamicProperty) [],
                        id = '0000:88:00.0',
@@ -900,7 +958,7 @@ class VMwareVimState:
         for i, vm_name in enumerate(vms):
             vm_config = vms_config[i]
             esxi_host = self.get_esxi_ip_of_vm(vm_name)
-            pnic_data = self.vm_pnic_info(vm_name)
+            pnic_data = self.read_vm_pnic_info(vm_name)
             vm_sriov_adapters = self.vm_sriov_devices(vm_name)
             hardware_info = vm_config.hardware
 

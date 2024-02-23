@@ -20,13 +20,13 @@ def example_vm_pnics(vm_name="vf-test-np1"):
 
     vms, vms_config = vmware_vim_state.find_vm_by_name_substring(vm_name)
     vmware_vim_state.get_vm_hardware(vms_config[0])
-    pnic_data = vmware_vim_state.vm_pnic_info(vms[0])
+    pnic_data = vmware_vim_state.read_vm_pnic_info(vms[0])
 
     dvs_uuids = list(pnic_data.keys())
 
     print(pnic_data.keys())
     print(f"VM name: {vms[0]}")
-    print(vmware_vim_state.vm_pnic_info(vms[0]))
+    print(vmware_vim_state.read_vm_pnic_info(vms[0]))
     print(vmware_vim_state.get_dvs_by_uuid(dvs_uuids[0]))
 
 
@@ -36,7 +36,8 @@ def example_vms_backend_host(vm_name="vf-test-np1"):
     """
     vm_name = "vf-test-np1"
     vmware_vim_state = VMwareVimState.from_optional_credentials(
-        None, vcenter_ip=os.getenv('VCENTER_IP', 'default'),
+        None,
+        vcenter_ip=os.getenv('VCENTER_IP', 'default'),
         username=os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local'),
         password=os.getenv('VCENTER_PASSWORD', 'default')
     )
