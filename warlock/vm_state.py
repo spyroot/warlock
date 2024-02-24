@@ -1,5 +1,5 @@
 """
-This class, VMwareVimState, is designed to encapsulate the state of virtual machines (VMs) within a
+VMwareVimState, is designed to encapsulate the state of virtual machines (VMs) within a
 VMware vSphere environment, providing an abstraction layer for managing and retrieving detailed
 information about VMs. The state information includes details such as the ESXi host on which a
 VM is running, NUMA node allocation, various configuration parameters, and network attachment
@@ -471,13 +471,14 @@ class VMwareVimState:
         all PNIC connected to a backing DVS switch.
 
         :param vm_name: virtual machine name
+        :raises VMNotFoundException: if the virtual machine not found
         :return:
         """
         self.connect_to_vcenter()
 
         vm = self._find_by_dns_name(vm_name)
         if not vm:
-            raise VMNotFoundException(vm_name)
+            raise VMNotFoundException("VM '{}' not found".format(vm_name))
 
         processed_switches = set()
         all_vm_network_data = {}
@@ -681,9 +682,8 @@ class VMwareVimState:
     def read_esxi_mgmt_address(
             self
     ) -> Dict[str, List[str]]:
-        """
-        Read all esxi host mgmt address.
-       .. code-block:: python
+        """ Read all esxi host mgmt address.
+        .. code-block:: python
           vim_state = warlock.VMwareVimState.from_optional_credentials(
                     ssh_executor=None,
                     vcenter_ip=os.getenv('VCENTER_IP', 'default_vcenter_ip'),
@@ -756,7 +756,8 @@ class VMwareVimState:
         :return:VMwarePciDevice
         :raises EsxHostNotFound if ESX host not found
         """
-        if esxi_host_identifier in self._pci_dev_cache and pci_device_id in self._pci_dev_cache[esxi_host_identifier]:
+        if (esxi_host_identifier in self._pci_dev_cache
+                and pci_device_id in self._pci_dev_cache[esxi_host_identifier]):
             return self._pci_dev_cache[esxi_host_identifier][pci_device_id]
 
         self.connect_to_vcenter()
@@ -861,7 +862,7 @@ class VMwareVimState:
             self,
             esxi_host_identified: str,
             pci_device_id: str
-    ):
+    ) -> Dict:
         """
         Retrieve detailed information for a specified PCI Network device on a given ESXi host.
         This method returns a dictionary containing the following keys and their associated values:
@@ -880,17 +881,20 @@ class VMwareVimState:
 
         :param esxi_host_identified: string an esxi host IP or UUID or moid
         :param pci_device_id: pci device.
-        :return:
+        :raise EsxHostNotFound: if host not found.
+        :raise PciDeviceNotFound: if pci device not found
+        :return: Dictionary
         """
-        self.connect_to_vcenter()
-        host_system = self.read_esxi_host(esxi_host_identified)
+        if not isinstance(esxi_host_identified, str):
+            raise TypeError(f"esxi_host_identified must be a string, got {type(esxi_host_identified)}")
 
-        if not host_system:
-            return f"Host {esxi_host_identified} not found."
+        if not isinstance(pci_device_id, str):
+            raise TypeError(f"pci_device_id must be a string, got {type(pci_device_id)}")
 
         pci_info = self.find_pci_device(
             esxi_host_identified, pci_device_id
         )
+
         if pci_info is None:
             raise PciDeviceNotFound(pci_device_id)
 
@@ -898,7 +902,6 @@ class VMwareVimState:
         pnic_name, pnic_info_dict = self.find_esxi_host_pnic(esxi_host_identified, pci_device_id)
         pnic_info_dict["pnic_vendor"] = pci_device_vendor_and_dev
 
-        # Prepare the final dictionary combining PCI device and pNIC information
         pci_pnic_info = {
             "mac": pnic_info_dict.get("mac", "Not found"),
             "id": pci_info.id,
@@ -912,12 +915,16 @@ class VMwareVimState:
             "is_connected": pnic_info_dict.get("is_connected", False),
             "pnic_vendor": f"{pci_info.id} - {pci_info.vendorName} {pci_info.deviceName}"
         }
+
         return pci_pnic_info
 
-    def vm_state(self, vm_name):
+    def vm_state(
+            self, vm_name
+    ):
         """
         Retrieves the state of VMs that match a given name substring,
-        including information about their pNICs, SR-IOV adapters, and specific hardware details.
+        including information about their pNICs, SR-IOV adapters,
+        and specific hardware details.
 
         :param vm_name: Substring of the VM name to search for.
         :return: A dictionary containing the state information for each matching VM.
@@ -926,6 +933,11 @@ class VMwareVimState:
         vms, vms_config = self.find_vm_by_name_substring(vm_name)
 
         for i, vm_name in enumerate(vms):
+            _vm_extra_config = self.read_vm_extra_config(vm_name)
+            _vm_extra_dict = self.vim_obj_to_dict(
+                _vm_extra_config, no_dynamics=True
+            )
+
             vm_config = vms_config[i]
             esxi_host = self.get_esxi_ip_of_vm(vm_name)
             pnic_data = self.read_vm_pnic_info(vm_name)
@@ -944,7 +956,10 @@ class VMwareVimState:
                 'pnic_data': pnic_data,
                 'sriov_adapters': vm_sriov_adapters,
                 'hardware_details': hardware_details,
+                'vm_config': _vm_extra_dict
             }
+
+
         return vm_states
 
     @staticmethod

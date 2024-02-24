@@ -559,3 +559,28 @@ class TestVMwareVimState(unittest.TestCase):
                         and pci_pnic_info['speed'] > 0,
                         "Speed should be a positive integer.")
         self.assertIn(pci_pnic_info['is_connected'], [True, False], "is_connected should be a boolean.")
+
+    def test_get_pci_net_device_info_not_found(self):
+        """Test pci net device info
+        :return:
+        """
+        with self.assertRaises(EsxHostNotFound):
+            _ = self.vmware_vim_state.get_pci_net_device_info(
+                "", ""
+            )
+
+    def test_vm_state_for_node_pool(self):
+        """Test vm state should return dict
+        :return:
+        """
+        vms = self.vmware_vim_state.vm_state(self._test_valid_vm_substring)
+        self.assertIsInstance(vms, dict, "The returned object should be a dictionary.")
+
+    def test_vm_state_not_found(self):
+        """Test vm state should throw an exception
+        :return:
+        """
+        with self.assertRaises(VMNotFoundException):
+            _ = self.vmware_vim_state.vm_state(
+                ""
+            )
