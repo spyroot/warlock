@@ -98,7 +98,8 @@ class PciDeviceNotFound(Exception):
 
 class VMwareVimState:
     def __init__(
-            self, ssh_executor: SshRunner,
+            self,
+            ssh_executor: SshRunner,
             test_environment_spec: Optional[Dict] = None,
             vcenter_ip: Optional[str] = None,
             username: Optional[str] = None,

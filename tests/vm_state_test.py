@@ -41,6 +41,44 @@ class TestVMwareVimState(unittest.TestCase):
             password=password
         )
 
+    def test_constructor_from_args(self):
+        """Test constructor from args."""
+        vcenter_ip = os.getenv('VCENTER_IP', 'default')
+        username = os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local')
+        password = os.getenv('VCENTER_PASSWORD', 'default')
+
+        _obj = VMwareVimState(
+            None, vcenter_ip=vcenter_ip,
+            username=username,
+            password=password
+        )
+        self.assertIsNotNone(_obj)
+        self.assertEqual(_obj.ssh_executor, None)
+        self.assertEqual(_obj.vcenter_ip, vcenter_ip)
+        self.assertEqual(_obj.username, username)
+        self.assertEqual(_obj.password, password)
+
+    def test_defaults_from_test_environment_spec(self):
+        """Test that defaults are correctly used from test_environment_spec."""
+        ssh_executor = None
+
+        vcenter_ip = os.getenv('VCENTER_IP', 'default')
+        username = os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local')
+        password = os.getenv('VCENTER_PASSWORD', 'default')
+
+        test_environment_spec = {
+            'iaas': {
+                'vcenter_ip': vcenter_ip,
+                'username': username,
+                'password': password
+            }
+        }
+
+        obj = VMwareVimState(None, test_environment_spec=test_environment_spec)
+        self.assertEqual(obj.vcenter_ip, test_environment_spec['iaas']['vcenter_ip'])
+        self.assertEqual(obj.username, test_environment_spec['iaas']['username'])
+        self.assertEqual(obj.password, test_environment_spec['iaas']['password'])
+
     def test_container_view(self):
         """Test retrieving a container view."""
         obj_type = [VMwareVirtualMachine]
@@ -200,6 +238,14 @@ class TestVMwareVimState(unittest.TestCase):
             found_vm_config,
             "found VMs confing should not be None"
         )
+
+        self.assertIsInstance(found_vms, list,
+                              "The returned object should be a list.")
+
+        for vm_key in found_vms:
+            self.assertIsInstance(vm_key, str,
+                                  f"Each element in expected_vm_keys should be a string. "
+                                  f"Found type {type(vm_key)} for element {vm_key}")
 
         cache_result = self.vmware_vim_state._vm_search_cache[self._test_valid_vm_substring]
         self.assertIsNotNone(
@@ -576,21 +622,28 @@ class TestVMwareVimState(unittest.TestCase):
         vms = self.vmware_vim_state.vm_state(self._test_valid_vm_substring)
         self.assertIsInstance(vms, dict, "The returned object should be a dictionary.")
 
-        # vm we expect
-        expected_vms, _ = self.vmware_vim_state.vmware_vim_statef.find_vm_by_name_substring(
+        expected_vm_keys, _ = self.vmware_vim_state.find_vm_by_name_substring(
             self._test_valid_vm_substring
         )
-        for expected_vm_key in expected_vms:
-            self.assertIn(expected_vm_key, vms, "'esxiHost' should be present in the VM details.")
-            self.assertIn('esxiHost',
-                          expected_vms[expected_vm_key],
-                          "'esxiHost' should be present in the VM details.")
-            self.assertIn('pnic_data',
-                          expected_vms[expected_vm_key],
-                          "'pnic_data' should be present in the VM details.")
-            self.assertIn('sriov_adapters',
-                          expected_vms[expected_vm_key],
-                          "'sriov_adapters' should be present in the VM details.")
+
+        self.assertIsInstance(expected_vm_keys, list,
+                              "The returned object should be a list.")
+
+        for vm_key in expected_vm_keys:
+            self.assertIsInstance(vm_key, str,
+                                  f"Each element in expected_vm_keys should be a string. "
+                                  f"Found type {type(vm_key)} for element {vm_key}")
+
+        for expected_vm_key in expected_vm_keys:
+            self.assertIn(expected_vm_key, vms,
+                          f"'{expected_vm_key}' should be present in the VM details.")
+
+            vm_details = vms[expected_vm_key]
+            self.assertIsInstance(vm_details, dict, "Each VM detail should be a dictionary.")
+
+            for key in ['esxiHost', 'pnic_data', 'sriov_adapters']:
+                self.assertIn(key, vm_details,
+                              f"'{key}' should be present in the VM details for '{expected_vm_key}'.")
 
     def test_vm_state_not_found(self):
         """Test vm state should throw an exception
