@@ -576,6 +576,22 @@ class TestVMwareVimState(unittest.TestCase):
         vms = self.vmware_vim_state.vm_state(self._test_valid_vm_substring)
         self.assertIsInstance(vms, dict, "The returned object should be a dictionary.")
 
+        # vm we expect
+        expected_vms, _ = self.vmware_vim_state.vmware_vim_statef.find_vm_by_name_substring(
+            self._test_valid_vm_substring
+        )
+        for expected_vm_key in expected_vms:
+            self.assertIn(expected_vm_key, vms, "'esxiHost' should be present in the VM details.")
+            self.assertIn('esxiHost',
+                          expected_vms[expected_vm_key],
+                          "'esxiHost' should be present in the VM details.")
+            self.assertIn('pnic_data',
+                          expected_vms[expected_vm_key],
+                          "'pnic_data' should be present in the VM details.")
+            self.assertIn('sriov_adapters',
+                          expected_vms[expected_vm_key],
+                          "'sriov_adapters' should be present in the VM details.")
+
     def test_vm_state_not_found(self):
         """Test vm state should throw an exception
         :return:

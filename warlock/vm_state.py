@@ -197,6 +197,15 @@ class VMwareVimState:
         :param password: Optional vCenter password.
         :return: An instance of VMwareVimState.
         """
+        if not isinstance(vcenter_ip, str):
+            raise TypeError(f"vcenter_ip must be a string, got {type(vcenter_ip)}")
+
+        if not isinstance(username, str):
+            raise TypeError(f"vcenter username must be a string, got {type(username)}")
+
+        if not isinstance(password, str):
+            raise TypeError(f"vcenter password must be a string, got {type(password)}")
+
         vcenter_ip = vcenter_ip or os.getenv('VCENTER_IP')
         username = username or os.getenv('VCENTER_USERNAME')
         password = password or os.getenv('VCENTER_PASSWORD')
@@ -223,8 +232,8 @@ class VMwareVimState:
             self, obj_type
     ) -> VmwareContainerView:
         """Return  container view for DVS
-        :param obj_type:
-        :return:
+        :param obj_type: VMware API object
+        :return: container view
         """
         self.connect_to_vcenter()
         content = self.si.RetrieveContent()
@@ -233,6 +242,7 @@ class VMwareVimState:
 
         try:
             yield container
+
         finally:
             container.Destroy()
 
@@ -312,7 +322,10 @@ class VMwareVimState:
     def find_vm_by_name_substring(
             self,
             name_substring: str
-    ) -> Tuple[List[str], List[VMConfigInfo]]:
+    ) -> Tuple[
+        List[str],
+        List[VMConfigInfo]
+    ]:
         """
         Find a VM by name substring in the vCenter server.
 
@@ -366,7 +379,10 @@ class VMwareVimState:
     def read_dvs_pnics_by_switch_uuid(
             self,
             switch_uuid: str
-    ) -> Dict[str, List[str]]:
+    ) -> Dict[
+        str,
+        List[str]
+    ]:
         """
         Retrieves all physical NICs associated with a given Distributed Virtual Switch,
         organized by host. This method returns a dictionary where keys are host
@@ -446,7 +462,7 @@ class VMwareVimState:
         raise SwitchNotFound(dvs_uuid)
 
     @staticmethod
-    def get_dvs_portgroup_by_key(
+    def read_dvs_portgroup_by_key(
             dvs,
             portgroup_key: str
     ):
@@ -576,7 +592,6 @@ class VMwareVimState:
             end_time = time.time()
             print(f"Execution time for vm_sriov_devices: {end_time - start_time} seconds")
 
-        print("DONE SRIOV")
         return sriov_adapters
 
     @staticmethod
@@ -593,7 +608,8 @@ class VMwareVimState:
     @staticmethod
     def get_vm_hardware_info(
             vm_config: vim.vm.ConfigInfo,
-            key: str) -> Optional[Any]:
+            key: str
+    ) -> Optional[Any]:
         """
         Retrieves specific hardware information from the VM's configuration.
 
