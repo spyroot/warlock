@@ -33,15 +33,14 @@ from contextlib import contextmanager
 from pyVmomi import vim
 import atexit
 import ssl
-import time
 
 
 from warlock.ssh_runner import SshRunner
 
 VMConfigInfo = vim.vm.ConfigInfo
 VirtualHardwareInfo = vim.vm.VirtualHardware
-DistributedVirtualSwitch = vim.dvs.VmwareDistributedVirtualSwitch
-DistributedVirtualSwitchConfig = vim.dvs.VmwareDistributedVirtualSwitch.ConfigInfo
+VMwareDistributedVirtualSwitch = vim.dvs.VmwareDistributedVirtualSwitch
+VMwareDistributedVirtualSwitchConfig = vim.dvs.VmwareDistributedVirtualSwitch.ConfigInfo
 VMwareDvsBackingInfo = vim.vm.device.VirtualEthernetCard.DistributedVirtualPortBackingInfo
 
 EsxHost = vim.HostSystem
@@ -57,7 +56,7 @@ VMwareInvalidLogin = vim.fault.InvalidLogin
 VMwareClusterComputeResource = vim.ClusterComputeResource
 VMwareResourcePool = vim.ResourcePool
 VMwareManagedEntity = vim.ManagedEntity
-
+VMwareDatastore = vim.Datastore
 
 class PciDeviceClass(Enum):
     """
@@ -445,8 +444,8 @@ class VMwareVimState:
             self,
             dvs_uuid: str
     ) -> Tuple[
-        DistributedVirtualSwitch,
-        DistributedVirtualSwitchConfig
+        VMwareDistributedVirtualSwitch,
+        VMwareDistributedVirtualSwitchConfig
     ]:
         """
         Retrieve a Distributed Virtual Switch (DVS) by its UUID.
@@ -573,9 +572,6 @@ class VMwareVimState:
         :return: List of dictionaries, each containing details of an SR-IOV network adapter.
         """
 
-        if self._debug:
-            start_time = time.time()
-
         self.connect_to_vcenter()
 
         sriov_adapters = []
@@ -605,10 +601,6 @@ class VMwareVimState:
                         'pNIC': pci_info.get('pNIC', 'Unknown'),
                     }
                     sriov_adapters.append(adapter_info)
-
-        if self._debug:
-            end_time = time.time()
-            print(f"Execution time for vm_sriov_devices: {end_time - start_time} seconds")
 
         return sriov_adapters
 
@@ -700,13 +692,13 @@ class VMwareVimState:
             for host in container.view:
                 host_name = host.name
                 host_uuid = host.summary.hardware.uuid
-                host_moId = str(host.summary.host)
+                host_moid = str(host.summary.host)
 
                 self.esxi_host_cache['name'][host_name] = host
                 self.esxi_host_cache['uuid'][host_uuid] = host
-                self.esxi_host_cache['moId'][host_moId] = host
+                self.esxi_host_cache['moId'][host_moid] = host
 
-                if identifier in [host_name, host_uuid, host_moId]:
+                if identifier in [host_name, host_uuid, host_moid]:
                     return host
         finally:
             container.Destroy()
@@ -952,7 +944,20 @@ class VMwareVimState:
 
         return pci_pnic_info
 
-    def read_datastore_by_name(self, datastore_name: str) -> Optional[vim.Datastore]:
+    def read_all_datastores(
+            self
+    ) -> List[VMwareDatastore]:
+        """
+        Reads all datastore's and return as a list of VMware Datastore
+        :return: List of VMwareClusterComputeResource.
+        """
+        with self._container_view([vim.Datastore]) as container:
+            return [d for d in container.datastores]
+
+    def read_datastore_by_name(
+            self,
+            datastore_name: str
+    ) -> Optional[VMwareDatastore]:
         """
         Retrieves a datastore by its name.
 
@@ -961,8 +966,53 @@ class VMwareVimState:
         """
         with self._container_view([vim.Datastore]) as container:
             for datastore in container.view:
-                if datastore.name == datastore_name:
+                if (datastore.name == datastore_name
+                        or str(datastore) == datastore_name):
                     return datastore
+        return None
+
+    def read_all_dvs(self) -> Optional[List[vim.DistributedVirtualSwitch]]:
+        """
+        Reads all Distributed Virtual Switches (DVS) and returns them as a list of DVS Switch objects.
+        :return: List of VMwareDistributedVirtualSwitch.
+        """
+        with self._container_view([vim.DistributedVirtualSwitch]) as container:
+            return [dvs for dvs in container.view]
+
+    def read_all_dvs_names(
+            self
+    ) -> Tuple[List[str], List[str]]:
+        """
+        Reads all Distributed Virtual Switch (DVS) names and returns them as strings.
+
+        Example:
+        ["vim.DistributedVirtualSwitch:dvs-100"]
+
+        :return: A tuple containing two lists: the first list contains
+                 the managed object reference strings,
+                 and the second list contains the human-readable names of the DVSs.
+        """
+        dvss = self.read_all_dvs()
+        if dvss is not None:
+            return ([str(d) for d in dvss],
+                    [d.name for d in dvss])
+        else:
+            return [], []
+
+    def read_dvs_by_name(
+            self, dvs_name: str
+    ) -> Optional[VMwareDistributedVirtualSwitch]:
+        """
+        Reads a Distributed Virtual Switch (DVS) by its name
+        or managed object id and returns it.
+
+        :param dvs_name: The name of the DVS or managed object id string.
+        :return: The DVS object if found, None otherwise.
+        """
+        with self._container_view([vim.DistributedVirtualSwitch]) as container:
+            for dvs in container.view:
+                if dvs.name == dvs_name or str(dvs) == dvs_name:
+                    return dvs
         return None
 
     def read_all_cluster(

@@ -20,7 +20,7 @@ from warlock.vm_state import (
     PciDeviceClass,
     VMwareVirtualMachine,
     VMwareClusterComputeResource,
-    VMwareResourcePool, VMwareManagedEntity
+    VMwareResourcePool, VMwareManagedEntity, VMwareDistributedVirtualSwitch
 )
 
 
@@ -727,3 +727,16 @@ class TestVMwareVimState(unittest.TestCase):
         self.assertIsInstance(rs, list, "return value must be list")
         self.assertTrue(all(isinstance(r, VMwareResourcePool) for r in rs),
                         "Not all elements VMwareResourcePool")
+
+    def test_read_all_dvs_names(self):
+        """Test read_cluster
+        :return:
+        """
+        dvs_moids, dvs_names = self.vmware_vim_state.read_all_dvs_names()
+        self.assertIsInstance(dvs_moids, list, "return value must be list")
+        self.assertIsInstance(dvs_names, list, "return value must be list")
+        self.assertTrue(all(isinstance(x, str) for x in dvs_moids),
+                        "Not all elements str")
+        self.assertTrue(all(isinstance(x, str) for x in dvs_names),
+                        "Not all elements str")
+
