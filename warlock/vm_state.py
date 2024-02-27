@@ -495,6 +495,62 @@ class VMwareVimState:
                 return portgroup
         return None
 
+    def read_vm_vnic_info(
+            self,
+            vm_name: str
+    ) -> List[Dict[str, str]]:
+        """
+        Retrieve information about all virtual NICs (vNICs)
+        associated with a given virtual machine.
+
+        :param vm_name: The name of the virtual machine.
+        :return: A list of dictionaries, where each dictionary contains details about a vNIC.
+        """
+        self.connect_to_vcenter()
+
+        vm = self._find_by_dns_name(vm_name)
+        if not vm:
+            raise VMNotFoundException("VM '{}' not found".format(vm_name))
+
+        vnic_info = []
+
+        for device in vm.config.hardware.device:
+            if isinstance(device, vim.vm.device.VirtualEthernetCard):
+                # print("DEV")
+                # print(device)
+                # print("END")
+                # print(device.externalId)
+                # print(device.deviceInfo)
+                is_sriov = False
+                if hasattr(device, 'sriovBacking'):
+                    is_sriov = True
+                    sriov_backing = device.sriovBacking
+                    pf_info = sriov_backing.physicalFunctionBacking
+                    vf_info = sriov_backing.virtualFunctionBacking
+
+                vnic_detail = {
+                    'label': device.deviceInfo.label,
+                    'summary': device.deviceInfo.summary,
+                    'macAddress': device.macAddress,
+                    'key': device.key,
+                    'backing': type(device.backing).__name__,
+                    'network': None,
+                    'is_sriov': is_sriov
+                }
+
+                if hasattr(device.backing, 'network'):
+                    network_ref = device.backing.network
+                    if isinstance(network_ref, vim.Network):
+                        vnic_detail['network'] = network_ref.name
+                    elif isinstance(network_ref, vim.dvs.DistributedVirtualPortgroup):
+                        vnic_detail['network'] = network_ref.name
+                    elif isinstance(network_ref, vim.OpaqueNetwork):
+                        vnic_detail['network'] = network_ref.summary.name
+
+                vnic_info.append(vnic_detail)
+
+        return vnic_info
+
     def read_vm_pnic_info(
             self,
             vm_name: str
@@ -1000,7 +1056,8 @@ class VMwareVimState:
             return [], []
 
     def read_dvs_by_name(
-            self, dvs_name: str
+            self,
+            dvs_name: str
     ) -> Optional[VMwareDistributedVirtualSwitch]:
         """
         Reads a Distributed Virtual Switch (DVS) by its name
@@ -1011,7 +1068,8 @@ class VMwareVimState:
         """
         with self._container_view([vim.DistributedVirtualSwitch]) as container:
             for dvs in container.view:
-                if dvs.name == dvs_name or str(dvs) == dvs_name:
+                if (dvs.name == dvs_name
+                        or str(dvs) == dvs_name):
                     return dvs
         return None
 
