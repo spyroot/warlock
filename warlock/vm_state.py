@@ -35,6 +35,7 @@ import atexit
 import ssl
 import time
 
+
 from warlock.ssh_runner import SshRunner
 
 VMConfigInfo = vim.vm.ConfigInfo
@@ -52,8 +53,10 @@ VmwareAffinityInfo = vim.vm.AffinityInfo
 VmwareVgpuProfileInfo = vim.vm.VgpuProfileInfo
 VmwareSriovInfo = vim.vm.SriovInfo
 VmwareVcpuConfig = vim.vm.VcpuConfig
-
 VMwareInvalidLogin = vim.fault.InvalidLogin
+VMwareClusterComputeResource = vim.ClusterComputeResource
+VMwareResourcePool = vim.ResourcePool
+VMwareManagedEntity = vim.ManagedEntity
 
 
 class PciDeviceClass(Enum):
@@ -82,6 +85,18 @@ class EsxHostNotFound(Exception):
         super().__init__(message)
 
 
+class DatastoreNotFoundException(Exception):
+    def __init__(self, datastore_name):
+        message = f"Datastore '{datastore_name}' not found."
+        super().__init__(message)
+
+
+class ClusterNotFoundException(Exception):
+    def __init__(self, cluster_name):
+        message = f"Cluster '{cluster_name}' not found."
+        super().__init__(message)
+
+
 class VMNotFoundException(Exception):
     """Exception to be raised when a VM cannot be found."""
 
@@ -99,7 +114,7 @@ class PciDeviceNotFound(Exception):
 class VMwareVimState:
     def __init__(
             self,
-            ssh_executor: SshRunner,
+            ssh_executor: Union[SshRunner, None],
             test_environment_spec: Optional[Dict] = None,
             vcenter_ip: Optional[str] = None,
             username: Optional[str] = None,
@@ -230,9 +245,11 @@ class VMwareVimState:
 
     @contextmanager
     def _container_view(
-            self, obj_type
+            self,
+            obj_type
     ) -> VmwareContainerView:
         """Return  container view for DVS
+
         :param obj_type: VMware API object
         :return: container view
         """
@@ -935,8 +952,143 @@ class VMwareVimState:
 
         return pci_pnic_info
 
+    def read_datastore_by_name(self, datastore_name: str) -> Optional[vim.Datastore]:
+        """
+        Retrieves a datastore by its name.
+
+        :param datastore_name: The name of the datastore.
+        :return: The datastore object if found, None otherwise.
+        """
+        with self._container_view([vim.Datastore]) as container:
+            for datastore in container.view:
+                if datastore.name == datastore_name:
+                    return datastore
+        return None
+
+    def read_all_cluster(
+            self
+    ) -> Optional[List[VMwareClusterComputeResource]]:
+        """
+        Reads all cluster and return as a list of VMware Cluster ComputeResources.
+        :return: List of VMwareClusterComputeResource.
+        """
+        with self._container_view([vim.ClusterComputeResource]) as container:
+            clusters = [cluster for cluster in container.view]
+            return clusters
+
+    def read_all_cluster_names(
+            self
+    ) -> Tuple[List[str], List[str]]:
+        """
+        Reads all cluster name and return as string.
+
+        Example
+        ["vim.ClusterComputeResource:domain-c8"]
+
+        :return: The cluster string name
+        """
+        clusters = self.read_all_cluster()
+        if clusters is not None:
+            return ([str(c) for c in clusters],
+                    [c.name for c in clusters])
+        else:
+            return [], []
+
+    def read_cluster(
+            self,
+            cluster_name: str
+    ) -> Optional[VMwareClusterComputeResource]:
+        """
+        Reads a cluster by its name or managed object id and returns them as
+        list of VMware Cluster ComputeResource
+
+        :param cluster_name: The name of the cluster or managed object id string.
+        :return: The cluster object if found, None otherwise.
+        """
+        with self._container_view([vim.ClusterComputeResource]) as container:
+            for cluster in container.view:
+                if cluster.name == cluster_name or str(cluster) == cluster_name:
+                    return cluster
+        return None
+
+    def read_cluster_by_vm_name(
+            self,
+            vm_name: str
+    ) -> Union[VMwareManagedEntity, None]:
+        """
+        Reads the cluster that contains a specified virtual machine by the VM's name.
+
+        :param vm_name: The name of the virtual machine.
+        :return: The cluster object if found, None otherwise.
+        :raise: VMNotFoundException if the virtual machine not found
+        """
+        vm = self._find_by_dns_name(vm_name)
+        if vm is None:
+            raise VMNotFoundException("VM '{}' not found".format(vm_name))
+
+        try:
+            resource_pool = vm.resourcePool
+            while hasattr(resource_pool, 'parent') and resource_pool.parent is not None:
+                if isinstance(resource_pool.parent, vim.ClusterComputeResource):
+                    return resource_pool.parent
+                resource_pool = resource_pool.parent
+        except AttributeError:
+            return None
+
+        return None
+
+    def read_all_resource_pools(
+            self
+    ) -> Optional[List[VMwareResourcePool]]:
+        """
+        Reads all resource pools and returns them as a list
+        of VMware ResourcePool objects.
+
+        :return: List of VMwareResourcePool objects.
+        """
+        with self._container_view([vim.ResourcePool]) as container:
+            resource_pools = [resource_pool for resource_pool in container.view]
+            return resource_pools
+
+    def read_all_resource_pool_names(
+            self
+    ) -> Tuple[List[str], List[str]]:
+        """
+        Reads all resource pool names and returns them as strings.
+
+        Example:
+        ["vim.ResourcePool:resgroup-100"]
+
+        :return: A tuple containing two lists: the first list contains the managed object reference strings,
+                 and the second list contains the human-readable names of the resource pools.
+        """
+        resource_pools = self.read_all_resource_pools()
+        if resource_pools is not None:
+            return ([str(rp) for rp in resource_pools],
+                    [rp.name for rp in resource_pools])
+        else:
+            return [], []
+
+    def read_resource_pool_by_name(
+            self,
+            resource_pool_name: str
+    ) -> Optional[vim.ResourcePool]:
+        """
+        Retrieves a resource pool by its name.
+
+        :param resource_pool_name: The name of the resource pool.
+        :return: The resource pool object if found, None otherwise.
+        """
+        with self._container_view([vim.ResourcePool]) as container:
+            for resource_pool in container.view:
+                if (resource_pool.name == resource_pool_name or
+                        str(resource_pool) == resource_pool_name):
+                    return resource_pool
+        return None
+
     def vm_state(
-            self, vm_name
+            self,
+            vm_name: str
     ):
         """
         Retrieves the state of VMs that match a given name substring,
@@ -975,7 +1127,6 @@ class VMwareVimState:
                 'hardware_details': hardware_details,
                 'vm_config': _vm_extra_dict
             }
-
 
         return vm_states
 

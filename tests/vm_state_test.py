@@ -11,12 +11,16 @@ import os
 import unittest
 import time
 
+
 from warlock.vm_state import (
     VMwareVimState,
     SwitchNotFound,
     EsxHostNotFound,
     VMNotFoundException,
-    PciDeviceClass, VMwareVirtualMachine
+    PciDeviceClass,
+    VMwareVirtualMachine,
+    VMwareClusterComputeResource,
+    VMwareResourcePool, VMwareManagedEntity
 )
 
 
@@ -191,6 +195,15 @@ class TestVMwareVimState(unittest.TestCase):
             _vm_uuid,
             "The VM object should be None"
         )
+
+    def sample_vm_name(self) -> str:
+        """Sample some VM based on substring
+        :return:
+        """
+        found_vms, found_vm_config = self.vmware_vim_state.find_vm_by_name_substring(
+            self._test_valid_vm_substring
+        )
+        return next(iter(found_vms))
 
     def test_read_vm_numa_not_found(self):
         """Basic test for find_by_dns_name
@@ -514,7 +527,6 @@ class TestVMwareVimState(unittest.TestCase):
         sample_host_id = next(iter(pci_devices))
         sample_device_id = next(iter(pci_devices[sample_host_id]))
 
-        #  Attempt to find the sampled PCI device
         found_device = self.vmware_vim_state.find_pci_device(sample_host_id, sample_device_id)
 
         self.assertIsNotNone(found_device, "The PCI device should be found")
@@ -653,3 +665,65 @@ class TestVMwareVimState(unittest.TestCase):
             _ = self.vmware_vim_state.vm_state(
                 ""
             )
+
+    def test_read_all_clusters(self):
+        """Test read all VMware clusters and check for VMwareClusterComputeResource
+        :return:
+        """
+        clusters = self.vmware_vim_state.read_all_cluster()
+        self.assertIsInstance(clusters, list, "return value must be list")
+        self.assertTrue(all(isinstance(c, VMwareClusterComputeResource) for c in clusters),
+                        "Not all elements VMwareClusterComputeResource")
+
+    def test_read_all_clusters_name(self):
+        """Test read all cluster name and managed object ids
+        :return:
+        """
+        clusters_moids, cluster_names = self.vmware_vim_state.read_all_cluster_names()
+        self.assertIsInstance(clusters_moids, list, "return value must be list")
+        self.assertTrue(all(isinstance(c, str) for c in clusters_moids),
+                        "Not all elements string")
+
+    def test_read_cluster_from_moid(self):
+        """Test reads a cluster from provided cluster managed objet id
+        :return:
+        """
+        clusters_moids, _ = self.vmware_vim_state.read_all_cluster_names()
+        for n in clusters_moids:
+            c = self.vmware_vim_state.read_cluster(n)
+            self.assertIsInstance(
+                c, VMwareClusterComputeResource,
+                "method should return instance of VMwareClusterComputeResource"
+            )
+
+    def test_read_cluster_from_name(self):
+        """Test reads a cluster from provided cluster name
+        :return:
+        """
+        _, cluster_names = self.vmware_vim_state.read_all_cluster_names()
+        for n in cluster_names:
+            c = self.vmware_vim_state.read_cluster(n)
+            self.assertIsInstance(
+                c, VMwareClusterComputeResource,
+                "method should return instance of VMwareClusterComputeResource"
+            )
+
+    def test_read_cluster_from_vm(self):
+        """Test VMware cluster managed object from VM name
+        :return:
+        """
+        vm_name = self.sample_vm_name()
+        cluster = self.vmware_vim_state.read_cluster_by_vm_name(vm_name)
+        self.assertIsInstance(
+            cluster, VMwareManagedEntity,
+            "method should return instance of VMwareClusterComputeResource"
+        )
+
+    def test_read_all_resource_pools(self):
+        """Test read_cluster
+        :return:
+        """
+        rs = self.vmware_vim_state.read_all_resource_pools()
+        self.assertIsInstance(rs, list, "return value must be list")
+        self.assertTrue(all(isinstance(r, VMwareResourcePool) for r in rs),
+                        "Not all elements VMwareResourcePool")
