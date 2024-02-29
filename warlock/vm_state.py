@@ -34,7 +34,6 @@ from pyVmomi import vim
 import atexit
 import ssl
 
-
 from warlock.ssh_runner import SshRunner
 
 VMConfigInfo = vim.vm.ConfigInfo
@@ -57,6 +56,7 @@ VMwareClusterComputeResource = vim.ClusterComputeResource
 VMwareResourcePool = vim.ResourcePool
 VMwareManagedEntity = vim.ManagedEntity
 VMwareDatastore = vim.Datastore
+
 
 class PciDeviceClass(Enum):
     """
@@ -85,12 +85,16 @@ class EsxHostNotFound(Exception):
 
 
 class DatastoreNotFoundException(Exception):
+    """Exception to be raised when datastore cannot be found."""
+
     def __init__(self, datastore_name):
         message = f"Datastore '{datastore_name}' not found."
         super().__init__(message)
 
 
 class ClusterNotFoundException(Exception):
+    """Exception to be raised when cluster cannot be found."""
+
     def __init__(self, cluster_name):
         message = f"Cluster '{cluster_name}' not found."
         super().__init__(message)
@@ -104,9 +108,40 @@ class VMNotFoundException(Exception):
         super().__init__(message)
 
 
+class UnknownEntity(Exception):
+    """Exception to be raised when unknown managed entity requested."""
+    def __init__(self, entity_name):
+        message = f"Unknown '{entity_name}' entity."
+        super().__init__(message)
+
+
+class ResourcePoolNotFoundException(Exception):
+    """Exception to be raised when a Resource Pool cannot be found."""
+
+    def __init__(self, r_name):
+        message = f"Resource pool '{r_name}' not found."
+        super().__init__(message)
+
+
 class PciDeviceNotFound(Exception):
+    """Exception to be raised when a PCI device cannot be found."""
+
     def __init__(self, pci_dev_id):
         message = f"pci device '{pci_dev_id}' not found."
+        super().__init__(message)
+
+
+class VAppNotFoundException(Exception):
+    """Exception to be raised when a Resource Pool cannot be found."""
+    def __init__(self, vpp_name):
+        message = f"VAPP '{vpp_name}' not found."
+        super().__init__(message)
+
+
+class FolderNotFoundException(Exception):
+    """Exception to be raised when a Folder cannot be found."""
+    def __init__(self, folder_name):
+        message = f"Folder '{folder_name}' not found."
         super().__init__(message)
 
 
@@ -1194,6 +1229,36 @@ class VMwareVimState:
                     return resource_pool
         return None
 
+    def read_vapp_by_name(
+            self, vapp_name: str
+    ) -> Optional[vim.VirtualApp]:
+        """
+        Retrieves a vApp (Virtual Application) by its name.
+
+        :param vapp_name: The name of the vApp.
+        :return: The vApp object if found, None otherwise.
+        """
+        with self._container_view([vim.VirtualApp]) as container:
+            for vapp in container.view:
+                if vapp.name == vapp_name or str(vapp) == vapp_name:
+                    return vapp
+        return None
+
+    def read_folder_by_name(
+            self, folder_name: str
+    ) -> Optional[vim.Folder]:
+        """
+        Retrieves a folder by its name.
+
+        :param folder_name: The name of the folder.
+        :return: The folder object if found, None otherwise.
+        """
+        with self._container_view([vim.Folder]) as container:
+            for folder in container.view:
+                if folder.name == folder_name or str(folder) == folder_name:
+                    return folder
+        return None
+
     def vm_state(
             self,
             vm_name: str
@@ -1237,6 +1302,53 @@ class VMwareVimState:
             }
 
         return vm_states
+
+    def get_managed_entities(self, entity_name: str, entity_type: str):
+        """
+        Retrieves a managed entity by its name and type.
+
+        :param entity_name: The name of the entity to retrieve.
+        :param entity_type: The type of the entity (e.g., vm, host, datastore, cluster, dvs, resourcepool, vapp).
+        :return: The requested entity if found.
+        :raises: Specific exception if the entity is not found or the entity type is unknown.
+        """
+        entity = None
+        if entity_type == "vm":
+            entity = self._find_by_dns_name(entity_name)
+            if entity is None:
+                raise VMNotFoundException(f"VM '{entity_name}' not found")
+        elif entity_type == "host":
+            entity = self.read_esxi_host(entity_name)
+            if entity is None:
+                raise EsxHostNotFound(f"Host '{entity_name}' not found")
+        elif entity_type == "datastore":
+            entity = self.read_datastore_by_name(entity_name)
+            if entity is None:
+                raise DatastoreNotFoundException(f"Datastore '{entity_name}' not found")
+        elif entity_type == "cluster":
+            entity = self.read_cluster(entity_name)
+            if entity is None:
+                raise ClusterNotFoundException(f"Cluster '{entity_name}' not found")
+        elif entity_type == "dvs":
+            entity = self.read_dvs_by_name(entity_name)
+            if entity is None:
+                raise SwitchNotFound(f"Distributed switch '{entity_name}' not found")
+        elif entity_type == "resourcepool":
+            entity = self.read_resource_pool_by_name(entity_name)
+            if entity is None:
+                raise ResourcePoolNotFoundException(f"Resource Pool '{entity_name}' not found")
+        elif entity_type == "vapp":
+            entity = self.read_vapp_by_name(entity_name)
+            if entity is None:
+                raise VAppNotFoundException(f"vApp '{entity_name}' not found")
+        elif entity_type == "folder":
+            entity = self.read_folder_by_name(entity_name)
+            if entity is None:
+                raise FolderNotFoundException(f"Folder '{entity_name}' not found")
+        else:
+            raise UnknownEntity(f"Unknown entity type '{entity_type}'")
+
+        return entity
 
     @staticmethod
     def vim_obj_to_dict(

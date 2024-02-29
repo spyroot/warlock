@@ -5,7 +5,8 @@ correlated.
 
 All metric value return as ndarray.
 
-Most of docs related to counter can be found here
+Most of the docs related to counter and interpretation
+can be found here
 https://vdc-repo.vmware.com/vmwb-repository/dcr-public/d1902b0e-d479-46bf-8ac9-cee0e31e8ec0/07ce8dbd-db48-4261-9b8f-c6d3ad8ba472/network_counters.html
 
 Author: Mus
@@ -14,16 +15,13 @@ Author: Mus
 """
 import os
 import warnings
+from functools import lru_cache
 from typing import Optional, Dict, List, Tuple, Any
 
 import numpy as np
 
 from warlock.vm_state import (
-    VMwareVimState,
-    VMNotFoundException,
-    EsxHostNotFound,
-    DatastoreNotFoundException,
-    ClusterNotFoundException
+    VMwareVimState
 )
 
 from pyVmomi import vim
@@ -31,30 +29,59 @@ from datetime import datetime, timedelta
 
 VMwareMetricSeries = vim.PerformanceManager.MetricSeries
 VMwareMetricIntSeries = vim.PerformanceManager.IntSeries
+VMwarePerformanceManager = vim.PerformanceManager
 
 
-class UnknownEntity(Exception):
+class UpdateIntervalNotFound(Exception):
     def __init__(self, entity_name):
-        message = f"Unknown '{entity_name}' entity."
+        message = f"Performance Update interval '{entity_name}' not found."
+        super().__init__(message)
+
+
+class VMwareMetricCollectorError(Exception):
+    def __init__(self, msg):
+        message = f"Metric Collector Error Update: '{msg}'."
         super().__init__(message)
 
 
 class VMwareMetricCollector(VMwareVimState):
+    """
+     vSphere Aggregates metric information
+
+    This level includes basic performance metrics that are averaged over the collection interval.
+    It's suitable for general monitoring of key performance indicators.
+
+    Entities Covered: CPU, Memory, Disk, Network, System Uptime, System Heartbeat, and DRS.
+    Rollup Type: Average.
+    Exclusions: Does not include device-specific counters.
+    Example: Average CPU usage percentage, average memory usage, average disk I/O,
+             and average network throughput.
+
+    Counters with “average,” “summation,” and “latest” Rollup Types
+
+    This level provides a more detailed view by including summation and latest rollup types,
+    offering insights into total accumulations over the interval and the most recent values, respectively.
+
+    Entities Covered: Same as above, with the addition of "summation" and "latest" metrics.
+    Rollup Types: Average, Summation, Latest.
+    Exclusions: Does not include device-specific counters.
+    Example: Total bytes transmitted over the network during the interval (summation),
+    the latest memory usage at the end of the interval.
+    """
     def __init__(self,
-                 test_environment_spec: Optional[Dict] = None,
+                 environment_spec: Optional[Dict] = None,
                  vcenter_ip: Optional[str] = None,
                  username: Optional[str] = None,
                  password: Optional[str] = None):
         """
-
-        :param test_environment_spec:
-        :param vcenter_ip:
-        :param username:
-        :param password:
+        :param environment_spec: is some dictionary where we get VC Sphere information.
+        :param vcenter_ip: optional in case caller manually provide vCenter FQDN
+        :param username: optional in case caller manually provide username
+        :param password: optional in case caller manually provide
         """
         super().__init__(
             None,
-            test_environment_spec=test_environment_spec,
+            test_environment_spec=environment_spec,
             vcenter_ip=vcenter_ip,
             username=username,
             password=password
@@ -94,6 +121,41 @@ class VMwareMetricCollector(VMwareVimState):
         password = password or os.getenv('VCENTER_PASSWORD')
         return cls(None, vcenter_ip.strip(), username.strip(), password.strip())
 
+    def _get_perf_manager(
+            self
+    ) -> VMwarePerformanceManager:
+        """
+        Retrieve the PerformanceManager object from vCenter.
+        :return: VMwarePerformanceManager
+        :raises VMwareMetricCollectorError if failed to retrieve performance manager.
+        """
+        if not self.si:
+            self.connect_to_vcenter()
+
+        p = self.si.content.perfManager
+        if p is None:
+            raise VMwareMetricCollectorError("Failed get performance manager.")
+
+        return p
+
+    def _read_available_perf_metrics(
+            self,
+            entity
+    ):
+        """Reads available performance metrics for a given VMware entity.
+
+        :param entity: The managed entity object (e.g., VirtualMachine, HostSystem) to query metrics for.
+        :return:  A list of available performance metrics for the entity.
+        """
+        if len(self._vm_metrics_type) == 0:
+            self.read_all_supported_metrics()
+
+        entity_metric = self._get_perf_manager().QueryAvailablePerfMetric(entity=entity)
+        if entity_metric is None:
+            raise VMwareMetricCollectorError("Failed fetch entity metric.")
+
+        return entity_metric
+
     def read_entity_metric(
             self,
             entity_name: str,
@@ -116,33 +178,11 @@ class VMwareMetricCollector(VMwareVimState):
         :return: numpy array of metric values with shape (max_sample, num_metrics)
         """
 
-        entity = None
-        if entity_type == "vm":
-            entity = self._find_by_dns_name(entity_name)
-            if entity is None:
-                raise VMNotFoundException(f"VM '{entity_name}' not found")
-        elif entity_type == "host":
-            entity = self.read_esxi_host(entity_name)
-            if entity is None:
-                raise EsxHostNotFound(f"Host '{entity_name}' not found")
-        elif entity_type == "datastore":
-            entity = self.read_datastore_by_name(entity_name)
-            if entity is None:
-                raise DatastoreNotFoundException(f"Datastore '{entity_name}' not found")
-        elif entity_type == "cluster":
-            entity = self.read_cluster(entity_name)
-            if entity is None:
-                raise ClusterNotFoundException(f"Cluster '{entity_name}' not found")
-        elif entity_type == "dvs":
-            entity = self.read_dvs_by_name(entity_name)
-            if entity is None:
-                raise ClusterNotFoundException(f"Distributed switch '{entity_name}' not found")
-        else:
-            raise UnknownEntity("")
+        max_sample = max(1, max_sample)
+        interval_seconds = max(60, interval_seconds)
 
-        self.connect_to_vcenter()
-        content = self.si.RetrieveContent()
-        perf_manager = content.perfManager
+        perf_manager = self._get_perf_manager()
+        entity = self.get_managed_entities(entity_name, entity_type)
 
         metric_ids = [vim.PerformanceManager.MetricId(
             counterId=idx, instance=metric_instance) for idx in metric_indices]
@@ -184,31 +224,58 @@ class VMwareMetricCollector(VMwareVimState):
             interval_seconds: Optional[int] = 300,
             max_sample: Optional[int] = 30,
     ) -> np.ndarray:
-        """Collect vm usage metrics.
+        """Collect CPU usage metrics for a given virtual machine.
+
         :param vm_name: Name of the VM instance
         :param interval_seconds: Number of seconds in past to collect
         :param max_sample: Maximum number of samples to collect per time frame
-        :return:
+        :raises VMNotFoundException if the VM does not exist
+        :return: np.ndarray: Numpy array containing the CPU usage metrics.
         """
         metric_indices = [
             self.metric_index("cpu.usagemhz.average"),
             self.metric_index("cpu.usagemhz.minimum"),
             self.metric_index("cpu.usagemhz.maximum"),
         ]
-
         return self.read_entity_metric(vm_name, "vm", metric_indices, interval_seconds, max_sample)
 
-    # portgroupKey = 'dvportgroup-3001',
-    # portKey = '62',
-    # connectionCookie = 1053272663
-    #
+    def read_host_mhz_metric(
+            self,
+            esxi_host: str,
+            interval_seconds: Optional[int] = 300,
+            max_sample: Optional[int] = 30,
+    ) -> np.ndarray:
+        """Collect CPU usage metrics for a given virtual machine.
+
+        :param esxi_host: Name of the esxi_host instance
+        :param interval_seconds: Number of seconds in past to collect
+        :param max_sample: Maximum number of samples to collect per time frame
+        :raises VMNotFoundException if the VM does not exist
+        :return: np.ndarray: Numpy array containing the CPU usage metrics.
+        """
+        metric_indices = [
+            self.metric_index("cpu.usagemhz.average"),
+            self.metric_index("cpu.usagemhz.minimum"),
+            self.metric_index("cpu.usagemhz.maximum"),
+        ]
+        return self.read_entity_metric(esxi_host, "host", metric_indices, interval_seconds, max_sample)
+
     def read_net_vm_usage_metric(
             self,
             vm_name: str,
             interval_seconds: Optional[int] = 300,
             max_sample: Optional[int] = 30,
     ) -> Dict[str, np.ndarray]:
-        """Collect vm net usage metrics for each vnic VM connected.
+        """Method reads vm net usage metrics. It resolves
+        VM virtual nic adapters and return result as dict where a key is network
+        adapter identifier and the value is np.ndarray
+
+        (N, 0) - packetsTx
+        (N, 1) - packetsRx
+        (N, 2) - droppedTx
+        (N, 3) - droppedRx
+        (N, 4) - received is average in kb/sec
+        (N, 5) - transmitted is average in kb/sec
 
         :param vm_name: Name of the VM instance
         :param interval_seconds: Number of seconds in past to collect
@@ -216,8 +283,7 @@ class VMwareMetricCollector(VMwareVimState):
         :return:
         """
         vnic_info = self.read_vm_vnic_info(vm_name)
-        # note sriov doesn't have stats
-        vnic_labels = [vnic['key'] for vnic in vnic_info if vnic["is_sriov"] == False]
+        vnic_labels = [vnic['key'] for vnic in vnic_info if vnic["is_sriov"] is False]
 
         metric_indices = [
             self.metric_index("net.packetsTx.summation"),
@@ -228,15 +294,15 @@ class VMwareMetricCollector(VMwareVimState):
             self.metric_index("net.transmitted.average"),
         ]
 
-        vnic_stats = {}
-        for vnic_key in vnic_labels:
-            vnic_stats[vnic_key] = self.read_entity_metric(
+        vnic_stats = {
+            vnic_key: self.read_entity_metric(
                 vm_name, "vm",
                 metric_indices,
                 interval_seconds,
                 max_sample,
                 metric_instance=str(vnic_key)
-            )
+            ) for vnic_key in vnic_labels
+        }
 
         return vnic_stats
 
@@ -317,6 +383,7 @@ class VMwareMetricCollector(VMwareVimState):
             self.metric_index("cpu.coreUtilization.maximum"),
             self.metric_index("cpu.coreUtilization.none"),
         ]
+
         return self.read_entity_metric(
             host_name, "host",
             metric_indices,
@@ -432,18 +499,19 @@ class VMwareMetricCollector(VMwareVimState):
 
         return [self._vm_type_to_name.get(cid, f"Unknown Metric ID: {cid}") for cid in counter_ids]
 
+    @lru_cache(maxsize=None)
     def read_all_supported_metrics(
             self,
     ) -> Dict[str, int]:
         """Retrieve list of all available metrics and return Dict
-        mapping metric name to counter id
+        mapping metric name to counter id.
 
         :return: Dict mapping metric name to counter id
         """
-        self.connect_to_vcenter()
-        ctx = self.si.RetrieveContent()
-        perf_manager = ctx.perfManager
+        perf_manager = self._get_perf_manager()
         perf_counters = perf_manager.perfCounter
+        if perf_manager is None:
+            raise VMwareMetricCollectorError("perfCounter is None")
 
         for counter in perf_counters:
             counter_full = f"{counter.groupInfo.key}.{counter.nameInfo.key}.{counter.rollupType}"
@@ -451,22 +519,6 @@ class VMwareMetricCollector(VMwareVimState):
             self._vm_type_to_name[counter.key] = counter_full
 
         return self._vm_metrics_type
-
-    def _read_available_perf_metrics(
-            self,
-            entity
-    ):
-        """Reads available performance metrics for a given VMware entity.
-
-        :param entity: The managed entity object (e.g., VirtualMachine, HostSystem) to query metrics for.
-        :return:  A list of available performance metrics for the entity.
-        """
-        if len(self._vm_metrics_type) == 0:
-            self.read_all_supported_metrics()
-
-        self.connect_to_vcenter()
-        ctx = self.si.RetrieveContent()
-        return ctx.perfManager.QueryAvailablePerfMetric(entity=entity)
 
     def read_available_perf_metrics(
             self,
@@ -479,32 +531,7 @@ class VMwareMetricCollector(VMwareVimState):
         :param entity_name: The managed entity object (e.g., VirtualMachine, HostSystem) to query metrics for.
         :return:  A list of available performance metrics for the entity.
         """
-
-        entity = None
-        if entity_type == "vm":
-            entity = self._find_by_dns_name(entity_name)
-            if entity is None:
-                raise VMNotFoundException(f"VM '{entity_name}' not found")
-        elif entity_type == "host":
-            entity = self.read_esxi_host(entity_name)
-            if entity is None:
-                raise EsxHostNotFound(f"Host '{entity_name}' not found")
-        elif entity_type == "datastore":
-            entity = self.read_datastore_by_name(entity_name)
-            if entity is None:
-                raise DatastoreNotFoundException(f"Datastore '{entity_name}' not found")
-        elif entity_type == "cluster":
-            entity = self.read_cluster(entity_name)
-            if entity is None:
-                raise ClusterNotFoundException(f"Cluster '{entity_name}' not found")
-        elif entity_type == "dvs":
-            entity = self.read_dvs_by_name(entity_name)
-            print(entity)
-            if entity is None:
-                raise ClusterNotFoundException(f"Distributed switch '{entity_name}' not found")
-        else:
-            raise UnknownEntity("")
-
+        entity = self.get_managed_entities(entity_name, entity_type)
         metric_ids = self._read_available_perf_metrics(entity)
         counter_ids = [metric.counterId for metric in metric_ids]
         metric_names = self.resolve_metric_names(counter_ids)
@@ -535,7 +562,7 @@ class VMwareMetricCollector(VMwareVimState):
             self,
             host: str
     ) -> Tuple[List[Any], List[str]]:
-        """Reads available performance metric for VMware Cluster object
+        """Reads available performance metric for VMware Cluster object.
         :param host: cluster name identifier
         :return: return list available of counter id and name of metric cluster entity supports.
         """
@@ -545,8 +572,78 @@ class VMwareMetricCollector(VMwareVimState):
             self,
             dvs_name: str
     ) -> Tuple[List[Any], List[str]]:
-        """Reads available performance metric for VMware DVS object
+        """Reads available performance metric for VMware DVS object.
         :param dvs_name: dvs name identifier
         :return: return list available of counter id and name of metric dvs entity supports.
         """
         return self.read_available_perf_metrics(dvs_name, "dvs")
+
+    def update_perf_intervals(
+            self,
+            interval_id: int,
+            enabled: Optional[bool] = None,
+            length: Optional[int] = None,
+            sampling_period: Optional[int] = None
+    ):
+        """
+        Update the performance collection interval settings to a x-second sampling period.
+        by default, we update to default value 300.
+
+        Default intervals
+        https://developer.vmware.com/apis/vi-json/latest/sdk/vim25/release/PerformanceManager/moId/UpdatePerfInterval/post/
+
+        :param interval_id: The ID of the interval to update.
+        :param enabled: Whether the interval is enabled (True or False).
+        :param length: The length of the interval in seconds.
+        :param sampling_period: The new sampling period in seconds. Set to 60 for this example.
+        """
+
+        perf_manager = self._get_perf_manager()
+        current_intervals = perf_manager.historicalInterval
+        if current_intervals is None:
+            raise VMwareMetricCollectorError("Historical interval is None.")
+
+        interval = next((i for i in current_intervals if i.key == interval_id), None)
+        if not interval:
+            raise UpdateIntervalNotFound(interval_id)
+
+        if enabled is not None:
+            interval.enabled = enabled
+        if length is not None:
+            interval.length = length
+        if sampling_period is not None:
+            interval.samplingPeriod = sampling_period
+
+        try:
+            perf_manager.UpdatePerfInterval(interval)
+        except Exception as e:
+            raise VMwareMetricCollectorError(
+                f"Failed to update interval {interval_id}: {str(e)}")
+
+    def read_update_intervals(
+            self
+    ) -> Dict[Any, Any]:
+        """
+        Return all historical update intervals as dict
+        The collection level for the historical intervals can be changed.
+        https://developer.vmware.com/apis/vi-json/latest/sdk/vim25/release/PerformanceManager/moId/UpdatePerfInterval/post/
+
+        :return: a dict with all updated intervals
+        :raise VMwareMetricCollectorError if failed get performance manager object
+        """
+
+        perf_manager = self._get_perf_manager()
+        current_intervals = perf_manager.historicalInterval
+        if current_intervals is None:
+            raise VMwareMetricCollectorError("Historical interval is None.")
+
+        interval_dict = {
+            interval.key: {
+                'samplingPeriod': interval.samplingPeriod,
+                'name': interval.name,
+                'length': interval.length,
+                'level': interval.level,
+                'enabled': interval.enabled
+            } for interval in current_intervals
+        }
+        return interval_dict

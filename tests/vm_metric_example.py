@@ -31,6 +31,14 @@ def example_read_vm_metrics():
     vm_name = sample_vm_name()
     collector = vim_state_examples()
     metric_ids, metric_names = collector.read_vm_available_perf_metric(vm_name)
+
+    VMwareMetricCollector.from_optional_credentials(
+        None, vcenter_ip=os.getenv('VCENTER_IP', 'default'),
+        username=os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local'),
+        password=os.getenv('VCENTER_PASSWORD', 'default')
+    ).read_vm_usage_mhz_metric(vm_name)
+
+
     print(json.dumps(metric_ids, indent=4, sort_keys=True))
     print(json.dumps(metric_names, indent=4))
 
