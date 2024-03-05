@@ -112,32 +112,6 @@ class SshRunner:
         else:
             raise Exception(f"Command '{cmd}' failed with error: {result.stderr.strip()}")
 
-    # def check_key(self, node_ips, public_key_path, username, password=None):
-    #     """Function to push SSH keys to remote hosts , all follow ssh command executed
-    #      with key based authentication
-    #     :param node_ips:  list of node ip
-    #     :param public_key_path: a path to public key
-    #     :param username: initial username
-    #     :param password: initial password
-    #     :return:
-    #     """
-    #     with open(public_key_path, "r") as file:
-    #         public_key = file.read().strip()
-    #
-    #     for ip in node_ips:
-    #         print(f"Checking if SSH key is already present on {ip}...")
-    #         try:
-    #             authorized_keys = ssh_command(ip, "cat ~/.ssh/authorized_keys", username, password)
-    #             if public_key in authorized_keys:
-    #                 print(f"SSH key is already present on remote node: {ip}. Skipping...")
-    #             else:
-    #                 raise Exception("Key not found")
-    #         except Exception as e:
-    #             print(f"SSH key not found on {ip}. Copying...")
-    #             append_command = f'echo "{public_key}" >> ~/.ssh/authorized_keys'
-    #             ssh_command(ip, append_command, username, password)
-    #             print(f"SSH key successfully copied to {ip}.")
-
     def push_keys(self):
         """For initial connection we copy ssh key to remote nodes by leveraging
         ssh-copy-id all follow up ssh connection will use key authentication.

@@ -20,7 +20,8 @@ from warlock.vm_state import (
     PciDeviceClass,
     VMwareVirtualMachine,
     VMwareClusterComputeResource,
-    VMwareResourcePool, VMwareManagedEntity, VMwareDistributedVirtualSwitch
+    VMwareResourcePool, VMwareManagedEntity,
+    VMwareDistributedVirtualSwitch
 )
 
 
