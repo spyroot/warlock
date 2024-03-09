@@ -318,7 +318,7 @@ class KubernetesState:
             self,
             ns: Optional[str] = "default"
     ) -> List[str]:
-        """Return list of pod names as list of string
+        """Return a list of pod names as list of string
         :return:
         """
         if len(self._cache_pods_names) == 0:
@@ -471,7 +471,7 @@ class KubernetesState:
     ) -> Dict[str, Any]:
         """
         Reads labels from metadata.
-        :param node_name: a node name
+        :param node_name: a kubernetes node name
         :return: a dictionary with labels as keys.
         """
         meta = self.read_node_metadata(node_name)
@@ -484,9 +484,9 @@ class KubernetesState:
             node_name: str
     ) -> Optional[str | None]:
         """
-        Reads node pool labels name if it presents in  metadata
-        :param node_name:
-        :return:
+        Reads node pool labels VMware specific name for a node pools, if it presents in  metadata
+        :param node_name: a kubernetes node name
+        :return: return node pool name
         """
         labels = self.read_node_labels(node_name)
         for k, v in labels.items():

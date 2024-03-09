@@ -4,7 +4,7 @@ from ipaddress import ip_address
 import unittest
 from unittest.mock import patch
 
-from tests.custom_unit_test import CustomTestCase
+from tests.extended_test_case import ExtendedTestCase
 from tests.test_utils import (
     write_temp_kubeconfig,
     write_bad_temp_kubeconfig,
@@ -14,7 +14,7 @@ from tests.test_utils import (
 from warlock.kube_state import KubernetesState
 
 
-class TestKubernetesState(CustomTestCase):
+class TestKubernetesState(ExtendedTestCase):
     def setUp(self):
         """
         :return:
@@ -637,21 +637,18 @@ class TestKubernetesState(CustomTestCase):
                         "All addresses should convert without error")
 
     def test_read_node_metadata(self):
-        """Test read_esxi_metadata
+        """Test read node metadata
         :return:
         """
-        node_name = self.sample_node_name_from_specs()
-        node_metadata = KubernetesState().read_node_metadata(node_name)
+        node_metadata = KubernetesState().read_node_metadata(self.sample_node_name_from_specs())
         self.assertIsNotNone(node_metadata, "read_node_metadata should not return None")
         self.assertIsInstance(node_metadata, dict, "read_node_metadata should be a dict")
-        print(json.dumps(node_metadata, indent=4))
 
     def test_read_node_metadata_not_found(self):
         """Test read_esxi_metadata
         :return:
         """
-        node_name = self.sample_node_name_from_specs()
-        node_metadata = KubernetesState().read_node_metadata(node_name)
+        node_metadata = KubernetesState().read_node_metadata(self.sample_node_name_from_specs())
         self.assertIsNotNone(node_metadata, "read_node_metadata should not return None")
         self.assertIsInstance(node_metadata, dict, "read_node_metadata should be a dict")
         self.assertTrue(len(node_metadata) == 0, "read_node_metadata not found should empty dict")
@@ -661,8 +658,7 @@ class TestKubernetesState(CustomTestCase):
                 "telco.vmware.com/nodepool": "np1"
         :return:
         """
-        node_name = self.sample_node_name_from_specs()
-        node_metadata = KubernetesState().read_node_metadata("vf-test-np1-h5mtj-9cf8fdcf6xcfln5-k9jcm")
+        node_metadata = KubernetesState().read_node_metadata(self.sample_node_name_from_specs())
         self.assertIsNotNone(node_metadata, "read_esxi_metadata should not be None")
         print(json.dumps(node_metadata, indent=4))
 
@@ -671,7 +667,6 @@ class TestKubernetesState(CustomTestCase):
                 "telco.vmware.com/nodepool": "np1"
         :return:
         """
-        node_name = self.sample_node_name_from_specs()
-        node_metadata = KubernetesState().read_node_pool_name("vf-test-np1-h5mtj-9cf8fdcf6xcfln5-k9jcm")
-        self.assertIsNotNone(node_metadata, "read_esxi_metadata should not be None")
-        print(json.dumps(node_metadata, indent=4))
+        node_pool_name = KubernetesState().read_node_pool_name(self.sample_node_name_from_specs())
+        self.assertIsNotNone(node_pool_name, "read_node_pool_name should not be None")
+        self.assertIsInstance(node_pool_name, str, "read_node_pool_name should be a dict")

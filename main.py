@@ -11,7 +11,7 @@ from pathlib import Path
 
 from warlock.kube_state import KubernetesState
 from warlock.node_actions import NodeActions
-from warlock.ssh_runner import SshRunner
+from warlock.ssh_operator import SSHOperator
 from warlock.inference import (
     iperf_tcp_json_to_np, plot_tcp_perf
 )
@@ -78,7 +78,7 @@ def main(cmd_args):
     test_environment_spec = prepare_environment(kube_state, cmd_args.test_spec)
     print(test_environment_spec)
 
-    ssh_runner = SshRunner(kube_state.node_ips(), username="capv", password="VMware1!")
+    ssh_runner = SSHOperator(kube_state.node_ips(), username="capv", password="VMware1!")
     node_actions = NodeActions(
         kube_state.node_ips(),
         ssh_runner,

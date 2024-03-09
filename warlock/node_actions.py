@@ -12,14 +12,14 @@ import json
 import subprocess
 from typing import List, Dict
 
-from ssh_runner import SshRunner
+from ssh_operator import SSHOperator
 import time
 
 
 class NodeActions:
     def __init__(
             self, node_ips: List[str],
-            ssh_executor: SshRunner,
+            ssh_executor: SSHOperator,
             test_environment_spec=None
     ):
         """
@@ -82,7 +82,7 @@ class NodeActions:
 
             # Initiate reboot
             self.ssh_executor.run(ip, reboot_command)
-            self.ssh_executor.release_connection(ip)
+            self.ssh_executor._release_connection(ip)
 
             # Wait for the host to go down and come back up
             print(f"Waiting for {ip} to reboot...")

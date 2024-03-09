@@ -34,7 +34,7 @@ from pyVmomi import vim
 import atexit
 import ssl
 
-from warlock.ssh_runner import SshRunner
+from warlock.ssh_operator import SSHOperator
 
 VMConfigInfo = vim.vm.ConfigInfo
 VirtualHardwareInfo = vim.vm.VirtualHardware
@@ -148,7 +148,7 @@ class FolderNotFoundException(Exception):
 class VMwareVimState:
     def __init__(
             self,
-            ssh_executor: Union[SshRunner, None],
+            ssh_executor: Union[SSHOperator, None],
             test_environment_spec: Optional[Dict] = None,
             vcenter_ip: Optional[str] = None,
             username: Optional[str] = None,
