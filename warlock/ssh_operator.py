@@ -1,4 +1,13 @@
-#
+"""
+SSHOperator, designed to encapsulate ssh transport used to collect data point and
+perform  remote command execution.
+
+It also designed to re-use the connection to the remote host to avoid the overhead.
+
+Author: Mus
+ spyroot@gmail.com
+ mbayramo@stanford.edu
+"""
 import logging
 import subprocess
 from pathlib import Path
@@ -74,9 +83,10 @@ class SSHOperator:
             self.__initial_pubkey_exchange()
 
     @staticmethod
-    def __check_required():
-        """
-        :return:
+    def __check_required() -> None:
+        """Check required tools.
+        :return: None
+        :raises: CommandNotFound
         """
         try:
             subprocess.run(["ssh-copy-id", "-h"],
