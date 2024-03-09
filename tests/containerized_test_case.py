@@ -49,12 +49,11 @@ def get_container_id_by_image_tag(
 ) -> List[str]:
     """Return the container ID of the container with the specified image tag."""
     try:
-        cmd = f"docker ps --filter ancestor={image_tag}" + " --format {{.ID}}",
+        cmd = f"docker ps --filter ancestor={image_tag}" + " --format {{.ID}}"
         output = subprocess.check_output(
             cmd,
             shell=True
         )
-
         if output is not None:
             output = output.decode('utf-8').strip()
             container_ids = output.split()
@@ -95,10 +94,12 @@ class ContainerizedTestCase(ExtendedTestCase):
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                check=True, text=True
+                check=True,
+                text=True
             )
+
         except subprocess.CalledProcessError as e:
-            if "Cannot connect to the Docker daemon" in str(e):
+            if "Cannot connect to the Docker daemon" in str(e) or "error" in str(e):
                 raise Exception("Cannot connect to the Docker daemon. Is the Docker daemon running?")
             else:
                 raise

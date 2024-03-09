@@ -57,9 +57,11 @@ class SSHOperator:
             raise ValueError("password is required for password authentication.")
 
         if public_key_path is None:
-            default_pubkey_path = f"{expanduser('~')}/.ssh/id_rsa.pub"
+            default_pubkey_path = Path(f"{expanduser('~')}/.ssh/id_rsa.pub").resolve().absolute()
+            print("Default resolved", default_pubkey_path)
             if not Path(default_pubkey_path).exists():
-                raise PublicKeyNotFound(f"Public key not found at the default path: {default_pubkey_path}")
+                raise PublicKeyNotFound(f"Public key not found at the default path: {default_pubkey_path}. "
+                                        f"Make sure you generate key first")
             self._public_key_path = default_pubkey_path
 
         SSHOperator.__check_required()
