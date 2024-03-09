@@ -25,7 +25,7 @@ def generate_docker_file():
     """By default it just ubuntu latest docker image"""
     return """
 FROM ubuntu:latest
-RUN apt-get update && apt-get install -y openssh-server
+RUN apt-get update && apt-get install -y openssh-server net-tools
 RUN mkdir /var/run/sshd
 
 RUN useradd -ms /bin/bash sshuser && \

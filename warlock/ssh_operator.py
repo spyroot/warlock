@@ -8,14 +8,14 @@ Author: Mus
  spyroot@gmail.com
  mbayramo@stanford.edu
 """
+import time
 import logging
+import threading
 import subprocess
 from pathlib import Path
-from typing import List, Optional, Tuple
-import paramiko
 from os.path import expanduser
-import time
-
+from typing import List, Optional, Tuple, Dict
+import paramiko
 from paramiko.client import SSHClient
 
 
@@ -67,9 +67,9 @@ class SSHOperator:
 
         if public_key_path is None:
             default_pubkey_path = Path(f"{expanduser('~')}/.ssh/id_rsa.pub").resolve().absolute()
-            print("Default resolved", default_pubkey_path)
             if not Path(default_pubkey_path).exists():
-                raise PublicKeyNotFound(f"Public key not found at the default path: {default_pubkey_path}. "
+                raise PublicKeyNotFound(f"Public key not found "
+                                        f"at the default path: {default_pubkey_path}. "
                                         f"Make sure you generate key first")
             self._public_key_path = default_pubkey_path
 
@@ -160,6 +160,56 @@ class SSHOperator:
                 raise e
 
         return self._persistent_connections[host_key]
+
+    def broadcast(
+            self,
+            command: str,
+            best_effort: Optional[bool] = False
+    ) -> Dict[str, Tuple[str, int, float]]:
+        """
+        Broadcast a command to multiple hosts concurrently and collect outputs.
+
+        :param command: The command to broadcast.
+        :param best_effort: Optional flag to ignore exceptions.
+        :return: A dict where keys are host addresses and values are
+                 tuples of output, exit code, and execution time.
+        """
+        outputs = {}
+        threads = []
+
+        for host in self._persistent_connections:
+            thread = threading.Thread(
+                target=self._execute_command,
+                args=(host, command, outputs, best_effort))
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        return outputs
+
+    def _execute_command(
+            self, host: str,
+            command: str,
+            outputs: Dict[str, Tuple[str, int, float]], best_effort: bool
+    ):
+        """
+        Execute a command on a remote host and store the output,
+        exit code, and execution time.
+
+        :param host: The host address.
+        :param command: The command to execute.
+        :param outputs: A dictionary to store the output, exit code, and execution time.
+        :param best_effort: Flag to ignore exceptions.
+        """
+        try:
+            output, exit_code, exec_time = self.run(host, command)
+            outputs[host] = (output, exit_code, exec_time)
+        except Exception as e:
+            if not best_effort:
+                raise e
+
 
     def run(
             self,

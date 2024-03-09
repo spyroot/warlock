@@ -5,7 +5,6 @@ from unittest.mock import patch
 import paramiko
 from paramiko.ssh_exception import SSHException
 
-
 from tests.containerized_test_case import (
     ContainerizedTestCase
 )
@@ -200,23 +199,22 @@ class TesSshRunner(ContainerizedTestCase):
 
         _host = f"127.0.0.1:{self.ssh_port}"
 
-        ssh_operator = SSHOperator(
+        with SSHOperator(
             remote_hosts=[_host],
             username=self.ssh_user,
             password=self.ssh_pass,
             is_password_auth_only=False
-        )
+        ) as ssh_operator:
+            self.assertIsNotNone(ssh_operator, "ssh runner should be none")
+            self.assertEqual(ssh_operator._username, self.ssh_user, f"username should be {self.ssh_user}")
+            self.assertEqual(ssh_operator._password, self.ssh_pass, f"password should be {self.ssh_pass}")
+            self.assertFalse(ssh_operator._is_pubkey_authenticated, "_is_pubkey_authenticated should be false")
 
-        self.assertIsNotNone(ssh_operator, "ssh runner should be none")
-        self.assertEqual(ssh_operator._username, self.ssh_user, f"username should be {self.ssh_user}")
-        self.assertEqual(ssh_operator._password, self.ssh_pass, f"password should be {self.ssh_pass}")
-        self.assertFalse(ssh_operator._is_pubkey_authenticated, "_is_pubkey_authenticated should be false")
-
-        command = 'echo "complex command with pipe symbol" | grep "pipe"'
-        output, exit_code, execution_time = ssh_operator.run(_host, command)
-        self.assertIn("pipe", output, "Output should contain 'pipe'")
-        self.assertEqual(exit_code, 0, "Exit code should be zero")
-        self.assertGreater(execution_time, 0, "Execution time should be greater than zero")
+            command = 'echo "complex command with pipe symbol" | grep "pipe"'
+            output, exit_code, execution_time = ssh_operator.run(_host, command)
+            self.assertIn("pipe", output, "Output should contain 'pipe'")
+            self.assertEqual(exit_code, 0, "Exit code should be zero")
+            self.assertGreater(execution_time, 0, "Execution time should be greater than zero")
 
     def test_push_and_execute_complex2(self):
         """Test does initial ssh pub key copy """
@@ -225,98 +223,151 @@ class TesSshRunner(ContainerizedTestCase):
 
         _host = f"127.0.0.1:{self.ssh_port}"
 
-        ssh_operator = SSHOperator(
+        with SSHOperator(
             remote_hosts=[_host],
             username=self.ssh_user,
             password=self.ssh_pass,
             is_password_auth_only=False
-        )
+        ) as ssh_operator:
+            self.assertIsNotNone(ssh_operator, "ssh runner should be none")
+            self.assertEqual(ssh_operator._username, self.ssh_user, f"username should be {self.ssh_user}")
+            self.assertEqual(ssh_operator._password, self.ssh_pass, f"password should be {self.ssh_pass}")
+            self.assertFalse(ssh_operator._is_pubkey_authenticated, "_is_pubkey_authenticated should be false")
 
-        self.assertIsNotNone(ssh_operator, "ssh runner should be none")
-        self.assertEqual(ssh_operator._username, self.ssh_user, f"username should be {self.ssh_user}")
-        self.assertEqual(ssh_operator._password, self.ssh_pass, f"password should be {self.ssh_pass}")
-        self.assertFalse(ssh_operator._is_pubkey_authenticated, "_is_pubkey_authenticated should be false")
+            command = 'echo "complex command with pipe symbol" | grep "pipe"'
+            output, exit_code, execution_time = ssh_operator.run(_host, command)
+            self.assertIn("pipe", output, "Output should contain 'pipe'")
+            self.assertEqual(exit_code, 0, "Exit code should be zero")
+            self.assertGreater(execution_time, 0, "Execution time should be greater than zero")
 
-        command = 'echo "complex command with pipe symbol" | grep "pipe"'
-        output, exit_code, execution_time = ssh_operator.run(_host, command)
-        self.assertIn("pipe", output, "Output should contain 'pipe'")
-        self.assertEqual(exit_code, 0, "Exit code should be zero")
-        self.assertGreater(execution_time, 0, "Execution time should be greater than zero")
+            command = 'echo "$PATH"'
+            output, exit_code, execution_time = ssh_operator.run(_host, command)
+            self.assertIsNotNone(output, "Output should not be None")
+            self.assertIn("/", output, "Output should contain '/' symbols")
+            self.assertEqual(exit_code, 0, "Exit code should be zero")
+            self.assertGreater(execution_time, 0, "Execution time should be greater than zero")
 
-        command = 'echo "$PATH"'
-        output, exit_code, execution_time = ssh_operator.run(_host, command)
-        self.assertIsNotNone(output, "Output should not be None")
-        self.assertIn("/", output, "Output should contain '/' symbols")
-        self.assertEqual(exit_code, 0, "Exit code should be zero")
-        self.assertGreater(execution_time, 0, "Execution time should be greater than zero")
+            script_content = '''\
+            #!/bin/bash
+    
+            echo "Received arguments:"
+            for arg in "$@"; do
+                echo "$arg"
+            done
+            '''
 
-        script_content = '''\
-        #!/bin/bash
+            script_file_path = '/tmp/mock.sh'
+            echo_command = f'echo "{script_content}" > {script_file_path}'
+            ssh_operator.run(_host, echo_command)
+            self.assertEqual(exit_code, 0, "Exit code for > should be zero")
 
-        echo "Received arguments:"
-        for arg in "$@"; do
-            echo "$arg"
-        done
-        '''
+            chmod_command = f'chmod +x {script_file_path}'
+            ssh_operator.run(_host, chmod_command)
+            self.assertEqual(exit_code, 0, "Exit code should be zero for chmod")
 
-        script_file_path = '/tmp/mock.sh'
-        echo_command = f'echo "{script_content}" > {script_file_path}'
-        ssh_operator.run(_host, echo_command)
-        self.assertEqual(exit_code, 0, "Exit code for > should be zero")
-
-        chmod_command = f'chmod +x {script_file_path}'
-        ssh_operator.run(_host, chmod_command)
-        self.assertEqual(exit_code, 0, "Exit code should be zero for chmod")
-
-        # arguments passed via '--'
-        command_with_args = '/tmp/mock.sh -v this_prog_args -- -c'
-        output, exit_code, execution_time = ssh_operator.run(_host, command_with_args)
-        self.assertIsNotNone(output, "Output should not be None")
-        self.assertEqual(exit_code, 0, "Exit code should be zero")
-        self.assertGreater(execution_time, 0, "Execution time should be greater than zero")
+            # arguments passed via '--'
+            command_with_args = '/tmp/mock.sh -v this_prog_args -- -c'
+            output, exit_code, execution_time = ssh_operator.run(_host, command_with_args)
+            self.assertIsNotNone(output, "Output should not be None")
+            self.assertEqual(exit_code, 0, "Exit code should be zero")
+            self.assertGreater(execution_time, 0, "Execution time should be greater than zero")
 
     def test_bad_pass(self):
-        """Test does initial ssh pub key copy """
+        """Test bad pass """
         self.assertIsNotNone(self.ssh_port, "Test expect ssh port")
         self.assertIsNotNone(self.container_id, "Test expect ssh port")
 
         _host = f"127.0.0.1:{self.ssh_port}"
         with self.assertRaises(paramiko.ssh_exception.AuthenticationException):
-            _ = SSHOperator(
+            with SSHOperator(
                 remote_hosts=[_host],
                 username=self.ssh_user,
                 password="bad",
                 is_password_auth_only=False
-            )
+            ) as ssh_operator:
+                pass
 
     def test_execute_cmd_and_timeout_after(self):
-        """Test does initial ssh pub key copy """
+        """Test execute cmd and timeout ssh  """
 
         self.assertIsNotNone(self.ssh_port, "Test expect ssh port")
         self.assertIsNotNone(self.container_id, "Test expect ssh port")
 
         _host = f"127.0.0.1:{self.ssh_port}"
 
-        ssh_operator = SSHOperator(
+        with SSHOperator(
             remote_hosts=[_host],
             username=self.ssh_user,
             password=self.ssh_pass,
             is_password_auth_only=False
-        )
+        ) as ssh_operator:
+            self.assertIsNotNone(ssh_operator, "ssh runner should be none")
+            self.assertEqual(ssh_operator._username, self.ssh_user, f"username should be {self.ssh_user}")
+            self.assertEqual(ssh_operator._password, self.ssh_pass, f"password should be {self.ssh_pass}")
+            self.assertFalse(ssh_operator._is_pubkey_authenticated, "_is_pubkey_authenticated should be false")
 
-        self.assertIsNotNone(ssh_operator, "ssh runner should be none")
-        self.assertEqual(ssh_operator._username, self.ssh_user, f"username should be {self.ssh_user}")
-        self.assertEqual(ssh_operator._password, self.ssh_pass, f"password should be {self.ssh_pass}")
-        self.assertFalse(ssh_operator._is_pubkey_authenticated, "_is_pubkey_authenticated should be false")
-
-        output, exit_code, _ = ssh_operator.run(_host, "echo 'test'")
-        self.assertEqual(output, 'test', f"output should be test")
-        self.assertEqual(exit_code, 0, f"exit code should be 0")
-
-        with patch('paramiko.SSHClient.exec_command') as mock_exec_command:
-            mock_exec_command.side_effect = SSHException("Simulated timeout")
             output, exit_code, _ = ssh_operator.run(_host, "echo 'test'")
-            self.assertEqual(output, '', f"output should be empty due to timeout")
-            self.assertNotEqual(exit_code, 0, f"exit code should not be 0 due to timeout")
+            self.assertEqual(output, 'test', f"output should be test")
+            self.assertEqual(exit_code, 0, f"exit code should be 0")
 
+            with patch('paramiko.SSHClient.exec_command') as mock_exec_command:
+                mock_exec_command.side_effect = SSHException("Simulated timeout")
+                output, exit_code, _ = ssh_operator.run(_host, "echo 'test'")
+                self.assertEqual(output, '', f"output should be empty due to timeout")
+                self.assertNotEqual(exit_code, 0, f"exit code should not be 0 due to timeout")
+
+    def test_connect_concurrently(self):
+        """
+        Test concurrent execution
+        """
+        self.assertIsNotNone(self.ssh_port, "Test expect ssh port")
+        self.assertIsNotNone(self.container_id, "Test expect ssh port")
+
+        _host1 = f"127.0.0.1:{self.ssh_port}"
+        _host2 = f"localhost:{self.ssh_port}"
+
+        with SSHOperator(
+            remote_hosts=[_host1, _host2],
+            username=self.ssh_user,
+            password=self.ssh_pass,
+            is_password_auth_only=False
+        ) as ssh_operator:
+            self.assertIsNotNone(ssh_operator, "ssh runner should be none")
+            self.assertEqual(ssh_operator._username, self.ssh_user, f"username should be {self.ssh_user}")
+            self.assertEqual(ssh_operator._password, self.ssh_pass, f"password should be {self.ssh_pass}")
+            self.assertFalse(ssh_operator._is_pubkey_authenticated, "_is_pubkey_authenticated should be false")
+            self.assertEqual(len(ssh_operator._persistent_connections), 2, "SSHOperator should open two connection.")
+
+            docker_command = f"docker exec {self.container_id} netstat -an | grep 22 | grep ESTABLISHED | wc -l"
+            result = subprocess.run(docker_command, shell=True, capture_output=True, text=True)
+            self.assertIsNotNone(result, "docker should return some result")
+            self.assertEqual(2, int(result.stdout.strip()), f"server should have two connection")
+
+    def test_execute_concurrently(self):
+        """
+        Test concurrent execution
+        """
+        self.assertIsNotNone(self.ssh_port, "Test expect ssh port")
+        self.assertIsNotNone(self.container_id, "Test expect ssh port")
+
+        _host1 = f"127.0.0.1:{self.ssh_port}"
+        _host2 = f"localhost:{self.ssh_port}"
+
+        with SSHOperator(
+            remote_hosts=[_host1, _host2],
+            username=self.ssh_user,
+            password=self.ssh_pass,
+            is_password_auth_only=False
+        ) as ssh_operator:
+            self.assertIsNotNone(ssh_operator, "SSHOperator should be none")
+            self.assertEqual(ssh_operator._username, self.ssh_user, f"username should be {self.ssh_user}")
+            self.assertEqual(ssh_operator._password, self.ssh_pass, f"password should be {self.ssh_pass}")
+            self.assertFalse(ssh_operator._is_pubkey_authenticated, "_is_pubkey_authenticated should be false")
+            self.assertEqual(len(ssh_operator._persistent_connections), 2, "SSHOperator should open two connection.")
+
+            docker_command = f"docker exec {self.container_id} netstat -an | grep 22 | grep ESTABLISHED | wc -l"
+            result = subprocess.run(docker_command, shell=True, capture_output=True, text=True)
+            self.assertIsNotNone(result, "docker should return some result")
+            self.assertEqual(2, int(result.stdout.strip()), f"server should have two connection")
+            output_dict = ssh_operator.broadcast("echo 'test'")
 
