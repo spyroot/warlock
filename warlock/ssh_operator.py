@@ -14,7 +14,7 @@ import threading
 import subprocess
 from pathlib import Path
 from os.path import expanduser
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Union
 import paramiko
 from paramiko.client import SSHClient
 
@@ -38,7 +38,7 @@ class CommandNotFound(Exception):
 class SSHOperator:
     def __init__(
             self,
-            remote_hosts: List[str],
+            remote_hosts: Union[str, List[str]],
             username: str = "capv",
             password: Optional[str] = None,
             public_key_path: Optional[str] = None,
@@ -55,6 +55,11 @@ class SSHOperator:
         if remote_hosts is None:
             raise ValueError("remote_hosts cannot be None. "
                              "Please provide a list of remote hosts.")
+
+        if isinstance(remote_hosts, str):
+            remote_hosts = [remote_hosts]
+        elif not isinstance(remote_hosts, list) or not all(isinstance(host, str) for host in remote_hosts):
+            raise ValueError("remote_hosts must be a string or a list of strings.")
 
         self._remote_hosts = remote_hosts
         self._username = username
@@ -118,7 +123,6 @@ class SSHOperator:
         """
         Ensure all connections are closed when exiting the context.
         """
-        print("Called __exit__")
         logging.debug("closing connections")
         self.close_all_connections()
 
@@ -155,6 +159,8 @@ class SSHOperator:
                 client.connect(ip, port=port, username=self._username, password=self._password)
                 self._persistent_connections[host_key] = client
             except Exception as e:
+                print(e)
+                print(str(e))
                 client.close()
                 del client
                 raise e
@@ -210,7 +216,6 @@ class SSHOperator:
             if not best_effort:
                 raise e
 
-
     def run(
             self,
             host: str,
@@ -220,11 +225,10 @@ class SSHOperator:
         Run a command on remote host and capture output.
         exit code and how much time took to execute.
 
-        :param host:
-        :param command:
-        :return:
+        :param host: a remote host that we execute the command
+        :param command: a shell command.
+        :return:  A tuple containing: (output, exit code, execution time)
         """
-
         if not command:
             raise ValueError("Command cannot be empty or None.")
 
@@ -350,3 +354,37 @@ class SSHOperator:
             if self._persistent_connections[host_key] is not None:
                 self._persistent_connections[host_key].close()
             del self._persistent_connections[host_key]
+
+    @staticmethod
+    def __normalize_host_key(
+            host_key: str) -> str:
+        """
+        Normalize the host key to ensure a consistent format.
+        :param host_key: The original host key, which may or may not include a port.
+        :return: A normalized host key in the format 'ip:port'.
+        """
+        if ':' in host_key:
+            ip, port = host_key.split(':')
+        else:
+            ip = host_key
+            port = '22'
+        return f"{ip}:{port}"
+
+    def has_active_connection(self, host_key: str) -> bool:
+        """
+        Check if there is an active SSH connection for the given host key.
+
+        :param host_key: The host key, typically in the format 'ip:port'.
+        :return: True if an active connection exists, False otherwise.
+        """
+        client = self.get_ssh_connection(host_key)
+        if client and client.get_transport() and client.get_transport().is_active():
+            return True
+        return False
+
+    def get_active_ssh_connection(self, host_key: str) -> SSHClient:
+        """Return ssh connection for passed host
+        :param host_key: is host key either IP , IP:port
+        :return: SSHClient
+        """
+        return self._persistent_connections.get(self.__normalize_host_key(host_key))

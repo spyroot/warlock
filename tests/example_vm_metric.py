@@ -38,7 +38,6 @@ def example_read_vm_metrics():
         password=os.getenv('VCENTER_PASSWORD', 'default')
     ).read_vm_usage_mhz_metric(vm_name)
 
-
     print(json.dumps(metric_ids, indent=4, sort_keys=True))
     print(json.dumps(metric_names, indent=4))
 
