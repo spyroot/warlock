@@ -751,6 +751,9 @@ class TestsEsxiState(ExtendedTestCase):
             esxi_host_state.update_vmdq("i40en", 16)
             module_parameters = esxi_host_state.read_module_parameters(module_name="i40en")
 
+            nic_list = esxi_host_state.read_adapters_by_driver("i40en")
+            rss_value_str = ",".join([str(16) for _ in nic_list])
+
             vmdq_value = None
             for param in module_parameters:
                 if param.get('Name') == 'VMDQ':
@@ -758,4 +761,39 @@ class TestsEsxiState(ExtendedTestCase):
                     break
 
             self.assertIsNotNone(vmdq_value, "VMDQ parameter not found.")
-            self.assertEqual(vmdq_value, "16", "VMDQ parameter value is not as expected.")
+            self.assertEqual(rss_value_str, vmdq_value, "VMDQ parameter value is not as expected.")
+
+    def test_can_update_vmdq_rss(self):
+        """Tests that we can update the VMDQ parameter.
+        from default 8 to 16"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn, username=self.username,
+                password=self.password) as esxi_host_state:
+
+            # we update the VMDQ and RSS parameters
+            esxi_host_state.update_vmdq("i40en", 16)
+            esxi_host_state.update_rss("i40en", True)
+
+            module_parameters = esxi_host_state.read_module_parameters(module_name="i40en")
+            nic_list = esxi_host_state.read_adapters_by_driver("i40en")
+            rss_value_str = ",".join([str(16) for _ in nic_list])
+
+            vmdq_value = None
+            for param in module_parameters:
+                if param.get('Name') == 'VMDQ':
+                    vmdq_value = param.get('Value')
+                    break
+
+            # check vmdq update
+            self.assertIsNotNone(vmdq_value, "VMDQ parameter not found.")
+            self.assertEqual(rss_value_str, vmdq_value, "VMDQ parameter value is not as expected.")
+
+            # check rss update
+            rss_value_str = ",".join([str(int(True)) for _ in nic_list])
+            for param in module_parameters:
+                if param.get('Name') == 'RSS':
+                    rss_vfs_value = param.get('Value')
+                    break
+
+            self.assertIsNotNone(rss_vfs_value, "max_vfs parameter not found.")
+            self.assertEqual(rss_vfs_value, rss_value_str, "max_vfs parameter value is not as expected.")
