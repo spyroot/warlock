@@ -1,3 +1,11 @@
+"""
+EsxiMetricCollector, designed to collect and vectorize metric
+from esxi hosts
+
+Author: Mus
+ spyroot@gmail.com
+ mbayramo@stanford.edu
+"""
 import json
 from typing import List, Dict, Union, Tuple, Any, Optional
 import time
@@ -16,20 +24,22 @@ class EsxiMetricCollector:
         self.esxi_state_reader = esxi_states
 
     def map_vm_hosts_port_ids(
-            self, vm_names: List[str]):
+            self,
+            vm_names: List[str]
+    ):
         """
         Returns a dictionary mapping VM names to their port IDs and ESXi host.
         Once a VM is found on one ESXi host, it's not searched for again on another host.
 
         Example output:
         {
-            'vf-test-np1-h5mtj-9cf8fdcf6xcfln5-k9jcm': {
+            'my-test-np1-h5mtj-9cf8fdcf6xcfln5-k9jcm': {
                 'port_ids': [67108902, 100663326, 100663327, 100663333, 134217757, 134217760, 134217761, 134217762],
-                'esxi_host': '10.252.80.107'
+                'esxi_host': '10.x.x.x'
             },
-            'vf-test-np1-h5mtj-9cf8fdcf6xcfln5-k6mdx': {
+            'my-test-np1-h5mtj-9cf8fdcf6xcfln5-k6mdx': {
                 'port_ids': [67112135, 100666566, 100666638, 100666639, 134221065, 134221066, 134221067, 134221068],
-                'esxi_host': '10.252.80.109'
+                'esxi_host': '10.x.x.x'
             }
         }
         """
@@ -61,12 +71,19 @@ class EsxiMetricCollector:
         return vm_to_port_ids
 
     def filtered_map_vm_hosts_port_ids(
-            self, vm_names: List[str], vmnic_name: Dict[str, str]):
+            self,
+            vm_names: List[str],
+            vmnic_name: Dict[str, str]
+    ):
         """
-        Returns a dictionary mapping VM names to their port IDs, ESXi host, and port VM NIC names filtered
-        by the specified adapter name.
+        Returns a dictionary mapping VM names to their port IDs, ESXi host,
+        and port VM NIC names filtered by the specified adapter name.
 
-        Once a VM is found on one ESXi host, it's not searched for again on another host.
+        Once a VM is found on one ESXi host, it's not searched
+        for again on another host.
+
+        vm_names is list of VM that we want resolve
+        vmnic_name is dict where key is VM name and adapter name.
 
         :param vm_names: List of VM names to map.
         :param vmnic_name: Dictionary of VM names to their target adapter names.
@@ -83,6 +100,7 @@ class EsxiMetricCollector:
             found_vm_names = []
             for vm_name in remaining_vm_names:
                 target_adapter = vmnic_name.get(vm_name, None)
+
                 port_ids = []
                 port_vm_nic_name = []
 
@@ -105,10 +123,12 @@ class EsxiMetricCollector:
         return vm_to_port_ids
 
     def get_esxi_state(
-            self, esxi_fqdn: str
+            self,
+            esxi_fqdn: str
     ) -> Union[None, EsxiState]:
-        """
-        Returns the EsxiState object for the given ESXi host FQDN.
+        """Returns the EsxiState object for the given ESXi host (FQDN or IP).
+        :param esxi_fqdn: IP or hostname address of the ESXi
+        :return:  EsxiState object
         """
         for esxi_state in self.esxi_state_reader:
             if esxi_state.fqdn == esxi_fqdn:
@@ -116,7 +136,15 @@ class EsxiMetricCollector:
         return None
 
     @staticmethod
-    def vectorize_data(data, vm_index):
+    def vectorize_data(
+            data: dict,
+            vm_index: int
+    ) -> np.ndarray:
+        """Take data stats and vectorized set of values that we use in downstream task
+        :param data:  Dictionary is dictionary object hold sample
+        :param vm_index:  Index of the VM.
+        :return:
+        """
         temp_data = []
         for stat in data['stats']:
             for port in stat['ports']:
@@ -132,7 +160,7 @@ class EsxiMetricCollector:
                 ))
         return np.array(temp_data)
 
-    def fetch_and_vectorize_data(
+    def __fetch_and_vectorize_data(
             self,
             esxi_state,
             vm_data,
@@ -155,8 +183,24 @@ class EsxiMetricCollector:
             num_sample: int = 1,
             interval: int = 10
     ) -> np.ndarray:
-        """
-        Collects and returns the vectorized data for the given VMs.
+        """This method take list of VM and dictionary of adapter name.
+        and collect metrics.
+
+        For example vm_names=["vm1", "vm2"]
+        vmnic_name={"vm1": "eth0", "vm2": "eth1"}
+
+        This method will collect the metrics for vm1 , eth0 adapters
+        and then collect the metrics for vm2 , eth1.
+
+        The data vectorized where first col is index of VM and second index
+        is index of VMNIC/VNIC.
+
+        :param vm_names:  a list of VM names
+        :param vmnic_name:  a dictionary of adapter name
+        :param is_sriov:    whether to collect metrics for sriov or vmxnet3
+        :param num_sample: number of samples to collect
+        :param interval:    how often
+        :return:
         """
         vm_to_port_ids = self.filtered_map_vm_hosts_port_ids(vm_names, vmnic_name)
         indices_map = {vm_name: index for index, vm_name in enumerate(vm_names)}
@@ -171,7 +215,7 @@ class EsxiMetricCollector:
                     if esxi_state:
                         futures.append(
                             executor.submit(
-                                self.fetch_and_vectorize_data,
+                                self.__fetch_and_vectorize_data,
                                 esxi_state,
                                 vm_data,
                                 indices_map[vm_name],

@@ -9,7 +9,8 @@ from tests.test_utils import (
     generate_sample_adapter_list_xml,
     generate_sample_vm_list,
     generate_vf_state_data,
-    generate_nic_data, sample_vm_stats
+    generate_nic_data,
+    sample_vm_stats
 )
 from warlock.esxi_metric_collector import EsxiMetricCollector
 from warlock.esxi_state import EsxiState
@@ -114,7 +115,8 @@ class TestsEsxiMetric(ExtendedTestCase):
         finally:
             for esxi_state in esxi_states:
                 esxi_state.release()
-                self.assertFalse(esxi_state.is_active(), f"{esxi_state.fqdn} should not be active after release")
+                self.assertFalse(esxi_state.is_active(),
+                                 f"{esxi_state.fqdn} should not be active after release")
 
     def test_collect_vm_port_metrics(self):
         """Tests constructors"""
@@ -141,6 +143,19 @@ class TestsEsxiMetric(ExtendedTestCase):
             for esxi_state in esxi_states:
                 esxi_state.release()
                 self.assertFalse(esxi_state.is_active(), f"{esxi_state.fqdn} should not be active after release")
+
+    def test_metric_parse(self):
+        """
+        Test the parsing
+        :return:
+        """
+        data = sample_vm_stats()
+        json_data = json.loads(data)
+        data = EsxiMetricCollector.vectorize_data(json_data, vm_index=7)
+        np.set_printoptions(linewidth=160)
+        self.assertTrue(data.shape[0] == 2, "vectorize_data should 2, 8")
+        self.assertTrue(data.shape[1] == 8, "vectorize_data should 2, 8")
+        self.assertTrue(np.all(data[:, 0] == 7), "data invalid")
 
     def test_collect_vm_port_metrics_n_samples(self):
         """Tests constructors"""
@@ -169,8 +184,5 @@ class TestsEsxiMetric(ExtendedTestCase):
                 esxi_state.release()
                 self.assertFalse(esxi_state.is_active(), f"{esxi_state.fqdn} should not be active after release")
 
-    def test_metric_parse(self):
-        data = sample_vm_stats()
-        json_data = json.loads(data)
-        EsxiMetricCollector.analyze_pps_and_drops(json_data)
-        # print(json.dumps(json_data, indent=4))
+
+
