@@ -185,7 +185,8 @@ class EsxiState:
     def read_adapter_names(
             self
     ) -> List[str]:
-        """Read all adapter names and return list of names
+        """Read all adapter names and return list of names.
+
         - if failed to read it will return an empty list
           in case of SSH transport issues exception raised.
 
@@ -204,6 +205,8 @@ class EsxiState:
         """
         # esxcli network sriovnic list
         nic_list = self.read_adapter_list()
+        print("REading adapter")
+        print(nic_list)
         if nic_list is None or len(nic_list) == 0:
             return []
 
@@ -510,6 +513,7 @@ class EsxiState:
             rx_int: int
     ) -> bool:
         """Update tx and rx ring size for a specified network adapter.
+
         :param nic:  a string representing the NIC vmnic0 etc.
         :param tx_int: ring tx size
         :param rx_int: ring rx size
@@ -531,12 +535,13 @@ class EsxiState:
             self,
             module_name: str = "icen"
     ):
-        """Read network adapter stats
-        :param module_name:  Name of the adapter. "vmnic0" etc/
-        :return:
+        """Read kernel module parameters for a given module.
+
+        :param module_name:  Name of the module. "icen", "en40"
+        :return: a list that hold dictionary of parameters driver current uses.
         """
-        cmd = f"esxcli --formatter=xml system module parameters list -m {module_name}"
-        _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
+        _data, exit_code, _ = self._ssh_operator.run(
+            self.fqdn, f"esxcli --formatter=xml system module parameters list -m {module_name}")
         if exit_code == 0 and _data is not None:
             return json.loads(EsxiState.xml2json(_data))
         return []
@@ -565,12 +570,40 @@ class EsxiState:
             self,
             nic: str = "vmnic0"
     ):
+        """
+        Read adapter parameters and return a list of dictionaries.
+        :param nic:
+        :return:
+        """
         module_name = self.read_adapter_driver(nic=nic)
         if module_name is not None:
             return self.read_module_parameters(module_name=module_name)
         return []
 
-    def enable_sriov(
+    def read_available_mod_parameters(
+            self,
+            nic: str = "vmnic0"
+    ) -> List[Dict[str, Any]]:
+        """
+        Reads adapter parameters and return a list of all parameters.
+
+        For example
+        [
+        'DRSS', 'DevRSS', 'QPair', 'RSS', 'RxDesc', 'RxITR',
+        'TxDesc', 'TxITR', 'VMDQ', 'max_vfs'
+        ]
+
+        :param nic: a string representing the name of the network adapter/
+        :return: a list of parameters
+        """
+        module_name = self.read_adapter_driver(nic=nic)
+        if module_name is not None:
+            module_params = self.read_module_parameters(module_name=module_name)
+            if len(module_params) > 0:
+                return [param['Name'] for param in module_params if 'Name' in param]
+        return []
+
+    def __enable_sriov(
             self,
             nic: str,
             num_vfs: int
@@ -586,13 +619,10 @@ class EsxiState:
             raise ValueError(f"num_vfs ({num_vfs}) must be a positive integer.")
 
         # esxcli system module parameters set -m ixgbe -p max_vfs=0,10,10,10
-        # Command to enable SR-IOV on the NIC
         enable_sriov_cmd = "esxcli system module parameters set -m ixgbe -p max_vfs=0,10,10,10"
         _data, exit_code, _ = self._ssh_operator.run(self.fqdn, enable_sriov_cmd)
 
-# esxcli system module parameters list -m icen
-
-        # Verify if enabling SR-IOV was successful
+        # esxcli system module parameters list -m icen
         return exit_code == 0
 
     @staticmethod
@@ -681,3 +711,161 @@ class EsxiState:
                     pass
                 stats_dict[key] = value
         return stats_dict
+
+    def write_vf_trusted(
+            self,
+            module_name: str = "icen"
+    ) -> bool:
+        """Update PF trusted state. ( Note not all module support that)
+        :param module_name: a kernel module name
+        :return: a boolean indicating whether the tx and rx ring size were updated
+        """
+        module_params = self.read_module_parameters(module_name=module_name)
+        if len(module_params) == 0:
+            raise ValueError(f"No parameters found for module {module_name}.")
+
+        param_names = [param['Name'] for param in module_params if 'Name' in param]
+
+        if 'trust_all_vfs' not in param_names:
+            raise ValueError(f"'trust_all_vfs' parameter not available for module {module_name}.")
+
+        cmd = f"esxcli system module parameters set -m {module_name} -p trust_all_vfs=1"
+        _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
+        return exit_code == 0
+
+    def update_module_param(
+            self, module_name:
+            str, param_name:
+            str, param_value: str
+    ) -> bool:
+        """
+        Update a specific parameter for a given kernel module.
+
+        :param module_name: The kernel module name.
+        :param param_name: The name of the parameter to update.
+        :param param_value: The new value for the parameter.
+        :return: A boolean indicating whether the parameter was successfully updated.
+        """
+        module_params = self.read_module_parameters(module_name=module_name)
+        if len(module_params) == 0:
+            raise ValueError(f"No parameters found for module {module_name}.")
+
+        param_names = [param['Name'] for param in module_params if 'Name' in param]
+        if param_name not in param_names:
+            raise ValueError(f"Parameter '{param_name}' not available for module {module_name}.")
+
+        cmd = f"esxcli system module parameters set -m {module_name} -p {param_name}={param_value}"
+        _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
+
+        if exit_code != 0:
+            raise RuntimeError(f"Failed to update '{param_name}' parameter for module {module_name}.")
+
+        return True
+
+    def read_adapters_by_driver(self, driver_name: str) -> List[str]:
+        """
+        Reads all adapter names using the specified driver from the previously fetched adapter list.
+
+        :param driver_name: The name of the driver to filter adapters by.
+        :return: A list of adapter names that use the specified driver. Returns an empty list if none found.
+        """
+        nic_list = self.read_adapter_list()
+        adapters_using_driver = [nic['Name'] for nic in nic_list if nic['Driver'] == driver_name]
+        return adapters_using_driver
+
+    def update_num_qps_per_vf(
+            self,
+            module_name: str,
+            num_qps: int
+    ) -> bool:
+        """
+        Update the NumQPsPerVF parameter for a specified kernel module.
+
+        :param module_name: The kernel module name.
+        :param num_qps: The number of queue pairs to be allocated for each VF. Must be one of [1, 2, 4, 8, 16].
+        :return: A boolean indicating whether the NumQPsPerVF parameter was successfully updated.
+        """
+        valid_values = [1, 2, 4, 8, 16]
+        nic_list = self.read_adapters_by_driver(module_name)
+        if num_qps not in valid_values:
+            raise ValueError(f"num_qps ({num_qps}) must be one of {valid_values}.")
+
+        num_qps_str = ",".join([str(num_qps) for _ in nic_list])
+        return self.update_module_param(module_name=module_name,
+                                        param_name="NumQPsPerVF",
+                                        param_value=str(num_qps_str))
+
+    def update_max_vfs(
+            self,
+            module_name: str,
+            max_vfs: int
+    ) -> bool:
+        """
+        Update max vfs  parameter for a specified kernel module for all adapter.
+
+        :param module_name: The kernel module name.
+        :param max_vfs: The number of max vf  [8, 16, 32, etc].
+        :return: A boolean indicating whether the NumQPsPerVF parameter was successfully updated.
+        """
+        nic_list = self.read_adapters_by_driver(module_name)
+        num_qps_str = ",".join([str(max_vfs) for _ in nic_list])
+        return self.update_module_param(module_name=module_name,
+                                        param_name="max_vfs",
+                                        param_value=str(num_qps_str))
+
+    def update_rss(self, module_name: str, enable: bool) -> bool:
+        """
+        Update the RSS (Receive-Side Scaling) parameter for a specified kernel module for all adapters.
+
+        :param module_name: The kernel module name.
+        :param enable: A boolean indicating whether to enable (True) or disable (False) RSS.
+        :return: A boolean indicating whether the RSS parameter was successfully updated.
+        """
+        nic_list = self.read_adapters_by_driver(module_name)
+        rss_value_str = ",".join([str(int(enable)) for _ in nic_list])
+        return self.update_module_param(module_name=module_name,
+                                        param_name="RSS",
+                                        param_value=rss_value_str)
+
+    def update_rx_itr(self, module_name: str, rx_itr: int) -> bool:
+        """
+        Update the default RX interrupt interval parameter for a specified kernel module.
+
+        :param module_name: The kernel module name.
+        :param rx_itr: The RX interrupt interval in microseconds. Must be in the range [0, 4095].
+        :return: A boolean indicating whether the parameter was successfully updated.
+        """
+        if not (0 <= rx_itr <= 4095):
+            raise ValueError("rx_itr must be between 0 and 4095.")
+
+        return self.update_module_param(module_name=module_name, param_name="RxITR", param_value=str(rx_itr))
+
+    def update_tx_itr(self, module_name: str, tx_itr: int) -> bool:
+        """
+        Update the default TX interrupt interval parameter for a specified kernel module.
+
+        :param module_name: The kernel module name.
+        :param tx_itr: The TX interrupt interval in microseconds. Must be in the range [0, 4095].
+        :return: A boolean indicating whether the parameter was successfully updated.
+        """
+        if not (0 <= tx_itr <= 4095):
+            raise ValueError("tx_itr must be between 0 and 4095.")
+
+        return self.update_module_param(module_name=module_name, param_name="TxITR", param_value=str(tx_itr))
+
+    def update_vmdq(self, module_name: str, vmdq: int) -> bool:
+        """
+        Update the VMDQ (Virtual Machine Device Queues) parameter for a specified kernel module.
+
+        :param module_name: The kernel module name.
+        :param vmdq: The number of Virtual Machine Device Queues. Must be one of [0, 1, 2, ..., 16].
+        :return: A boolean indicating whether the parameter was successfully updated.
+        """
+        valid_values = list(range(17))  # 0 to 16 inclusive
+        if vmdq not in valid_values:
+            raise ValueError("vmdq must be one of " + ", ".join(map(str, valid_values)))
+
+        nic_list = self.read_adapters_by_driver(module_name)
+        vmdq_str = ",".join([str(vmdq) for _ in nic_list])
+        return self.update_module_param(
+            module_name=module_name, param_name="VMDQ", param_value=str(vmdq_str))

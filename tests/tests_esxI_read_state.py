@@ -165,7 +165,36 @@ class TestsEsxiState(ExtendedTestCase):
                 password=self.password
         ) as esxi_host_state:
             module_parameters = esxi_host_state.read_module_parameters()
-            self.assertIsNotNone(module_parameters, "read_module_parameters must empty list or a list is not a None")
+            self.assertIsNotNone(
+                module_parameters,
+                "read_module_parameters must empty list or a list is not a None")
+            self.assertTrue(len(module_parameters) == 1,
+                            "read_module_parameters should return list with single entry")
+
+    def test_read_available_mod_parameters(self):
+        """Tests test we can read driver/module parameters t"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            # for default adapter.
+            module_parameters = esxi_host_state.read_available_mod_parameters()
+            self.assertIsNotNone(
+                module_parameters, "read_available_mod_parameters "
+                                   "must empty list or a list is not a None")
+            self.assertIsInstance(module_parameters,
+                                  list, f"read_available_mod_parameters should return a list")
+
+            # try to repeat for all adapters.
+            nic_names = esxi_host_state.read_adapter_names()
+            for nic in nic_names:
+                mp = esxi_host_state.read_available_mod_parameters(nic=nic)
+                self.assertIsNotNone(
+                    mp, "read_available_mod_parameters "
+                        "must empty list or a list is not a None")
+                self.assertIsInstance(
+                    mp, list, f"read_available_mod_parameters should return a list")
 
     def test_cannot_read_module_parameters(self):
         """Tests test we can read driver/module parameters t"""
@@ -175,7 +204,8 @@ class TestsEsxiState(ExtendedTestCase):
                 password=self.password
         ) as esxi_host_state:
             module_parameters = esxi_host_state.read_module_parameters(module_name="bad")
-            self.assertTrue([], module_parameters, "for bad module name should return empty list")
+            self.assertTrue(
+                [] == module_parameters, "for bad module name should return empty list")
 
     def test_can_read_adapter_driver(self):
         """Tests can parse nic list"""
@@ -185,7 +215,13 @@ class TestsEsxiState(ExtendedTestCase):
                 password=self.password
         ) as esxi_host_state:
             adapter_driver = esxi_host_state.read_adapter_driver()
-            self.assertIsNotNone(adapter_driver, "read_adapter_driver should return string")
+            self.assertIsNotNone(
+                adapter_driver, "read_adapter_driver should return string"
+            )
+            self.assertTrue(
+                len(adapter_driver) > 0,
+                "read_adapter_driver should return module name"
+            )
 
     def test_can_read_adapter_parameters(self):
         """Tests caller can read adapter parameters"""
@@ -447,7 +483,7 @@ class TestsEsxiState(ExtendedTestCase):
                 self.assertIsInstance(vm_name, str, "VM name should be a string")
                 self.assertTrue(vm_name, "VM name should be a non-empty string")
 
-    def test_read_vm_net_stats(self):
+    def test_can_read_vm_net_stats(self):
         """Tests dvs pf stats note it same as reading network stats."""
         with EsxiState.from_optional_credentials(
                 esxi_fqdn=self.esxi_fqdn,
@@ -463,7 +499,7 @@ class TestsEsxiState(ExtendedTestCase):
             self.assertIn('sysinfo', stats, "sysinfo should be a dict")
             self.assertIn('stats', stats, "stats should be a dict")
 
-    def test_read_port_net_stats(self):
+    def test_can_read_port_net_stats(self):
         """Tests dvs pf stats note it same as reading network stats."""
         with EsxiState.from_optional_credentials(
                 esxi_fqdn=self.esxi_fqdn,
@@ -476,7 +512,7 @@ class TestsEsxiState(ExtendedTestCase):
             self.assertIn('sysinfo', stats, "sysinfo should be a dict")
             self.assertIn('stats', stats, "stats should be a dict")
 
-    def test_read_sriov_queue_info(self):
+    def test_can_read_sriov_queue_info(self):
         """Tests we can read sriov queue information """
         with EsxiState.from_optional_credentials(
                 esxi_fqdn=self.esxi_fqdn,
@@ -490,7 +526,7 @@ class TestsEsxiState(ExtendedTestCase):
             self.assertIn("rx_info", queue_info, "read_sriov_queue_info should have rx_info key")
             self.assertIn("tx_info", queue_info, "read_sriov_queue_info should have tx_info key")
 
-    def test_read_net_adapter_capabilities(self):
+    def test_can_read_net_adapter_capabilities(self):
         """Tests we can network adapter capabilities  """
         with EsxiState.from_optional_credentials(
                 esxi_fqdn=self.esxi_fqdn,
@@ -516,7 +552,7 @@ class TestsEsxiState(ExtendedTestCase):
             )
             self.assertIsNotNone(is_cap, "should be boolean value")
 
-    def test_read_net_sriov_stats(self):
+    def test_can_read_net_sriov_stats(self):
         """Tests caller can check if capability enabled or not  """
         with EsxiState.from_optional_credentials(
                 esxi_fqdn=self.esxi_fqdn,
@@ -526,3 +562,200 @@ class TestsEsxiState(ExtendedTestCase):
             random_pf = random.choice(esxi_host_state.read_pf_adapter_names())
             raw_stats = esxi_host_state.read_net_sriov_stats(nic=random_pf)
             self.assertIsInstance(raw_stats, dict, "read_net_sriov_stats should be a dict")
+
+    def test_can_update_ring_size(self):
+        """Tests ring size can be updated"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            random_pf = random.choice(esxi_host_state.read_pf_adapter_names())
+            ok = esxi_host_state.write_ring_size(random_pf, 4096, 4096)
+            self.assertTrue(
+                ok, "write_ring_size should be able update ring size"
+            )
+
+    def test_update_ring_siz_should_fail(self):
+        """Tests write_ring_size should return false for bad adapter name"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            ok = esxi_host_state.write_ring_size("bad", 4096, 4096)
+            self.assertFalse(
+                ok, "write_ring_size should be able update ring size"
+            )
+
+    def test_update_ring_siz_bad_ring(self):
+        """Tests write_ring_size should return false for bad adapter name"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            # Test with tx_int not a power of 2
+            with self.assertRaises(ValueError):
+                esxi_host_state.write_ring_size("vmnic0", 4091, 1024)
+
+            # Test with rx_int not a power of 2
+            with self.assertRaises(ValueError):
+                esxi_host_state.write_ring_size("vmnic0", 1024, 4091)
+
+            # Test with both tx_int and rx_int not powers of 2
+            with self.assertRaises(ValueError):
+                esxi_host_state.write_ring_size("vmnic0", 4091, 4091)
+
+            # 0
+            with self.assertRaises(ValueError):
+                esxi_host_state.write_ring_size("vmnic0", 0, 4091)
+
+            # 0
+            with self.assertRaises(ValueError):
+                esxi_host_state.write_ring_size("vmnic0", 1024, 0)
+
+    def test_can_nic_from_driver_name(self):
+        """Tests write_ring_size should return false for bad adapter name"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            nic = esxi_host_state.read_adapters_by_driver("i40en")
+            self.assertIsInstance(nic, list, "NIC should be a list")
+
+    def test_no_card_driver_name_num_queue(self):
+        """Tests write_ring_size should return false for bad adapter name"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            nic = esxi_host_state.read_adapters_by_driver("bogus_driver")
+            self.assertIsInstance(nic, list, "NIC should be a list")
+            self.assertTrue(nic == [], "NIC should be empty list")
+
+    def test_can_set_trusted(self):
+        """Tests write_ring_size should return false for bad adapter name"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            esxi_host_state.write_vf_trusted("icen")
+
+    def test_can_update_num_queue(self):
+        """Tests write_ring_size should return false for bad adapter name"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            esxi_host_state.update_num_qps_per_vf("icen", 16)
+
+    def test_can_update_num_queue_en40(self):
+        """Tests write_ring_size should return false for bad adapter name"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            esxi_host_state.update_num_qps_per_vf("i40en", 16)
+
+    def test_can_update_max_vfs_from_array_en40(self):
+        """Tests test_can_update_max_vfs_from_array_en40
+        update max vfs for all nics """
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+
+            esxi_host_state.update_max_vfs("i40en", 16)
+            module_parameters = esxi_host_state.read_module_parameters(module_name="i40en")
+            nic_list = esxi_host_state.read_adapters_by_driver("i40en")
+            num_max_vfs = ",".join([str(16) for _ in nic_list])
+
+            for param in module_parameters:
+                if param.get('Name') == 'max_vfs':
+                    max_vfs_value = param.get('Value')
+                    break
+
+            self.assertIsNotNone(max_vfs_value, "max_vfs parameter not found.")
+            self.assertEqual(max_vfs_value, num_max_vfs, "max_vfs parameter value is not as expected.")
+
+    def test_can_update_rss_vfs_from_array_en40(self):
+        """Tests validate that we can update RSS """
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            esxi_host_state.update_rss("i40en", True)
+            module_parameters = esxi_host_state.read_module_parameters(module_name="i40en")
+            nic_list = esxi_host_state.read_adapters_by_driver("i40en")
+            rss_value_str = ",".join([str(int(True)) for _ in nic_list])
+
+            for param in module_parameters:
+                if param.get('Name') == 'RSS':
+                    rss_vfs_value = param.get('Value')
+                    break
+
+            self.assertIsNotNone(rss_vfs_value, "max_vfs parameter not found.")
+            self.assertEqual(rss_vfs_value, rss_value_str, "max_vfs parameter value is not as expected.")
+
+    def test_can_update_rx_itr(self):
+        """Tests that we can update the RxITR parameter
+        from default 100 microseconds."""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn, username=self.username,
+                password=self.password) as esxi_host_state:
+            esxi_host_state.update_rx_itr("i40en", 106)
+            module_parameters = esxi_host_state.read_module_parameters(module_name="i40en")
+
+            rx_itr_value = None
+            for param in module_parameters:
+                if param.get('Name') == 'RxITR':
+                    rx_itr_value = param.get('Value')
+                    break
+
+            self.assertIsNotNone(rx_itr_value, "RxITR parameter not found.")
+            self.assertEqual(rx_itr_value, "106", "RxITR parameter value is not as expected.")
+
+    def test_can_update_tx_itr(self):
+        """Tests that we can update the TxITR parameter.
+        from default 50 microseconds """
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn, username=self.username,
+                password=self.password) as esxi_host_state:
+            esxi_host_state.update_tx_itr("i40en", 40)
+            module_parameters = esxi_host_state.read_module_parameters(module_name="i40en")
+
+            tx_itr_value = None
+            for param in module_parameters:
+                if param.get('Name') == 'TxITR':
+                    tx_itr_value = param.get('Value')
+                    break
+
+            self.assertIsNotNone(tx_itr_value, "TxITR parameter not found.")
+            self.assertEqual(tx_itr_value, "40", "TxITR parameter value is not as expected.")
+
+    def test_can_update_vmdq(self):
+        """Tests that we can update the VMDQ parameter.
+        from default 8 to 16"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn, username=self.username,
+                password=self.password) as esxi_host_state:
+
+            esxi_host_state.update_vmdq("i40en", 16)
+            module_parameters = esxi_host_state.read_module_parameters(module_name="i40en")
+
+            vmdq_value = None
+            for param in module_parameters:
+                if param.get('Name') == 'VMDQ':
+                    vmdq_value = param.get('Value')
+                    break
+
+            self.assertIsNotNone(vmdq_value, "VMDQ parameter not found.")
+            self.assertEqual(vmdq_value, "16", "VMDQ parameter value is not as expected.")
