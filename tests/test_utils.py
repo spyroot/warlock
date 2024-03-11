@@ -1242,3 +1242,318 @@ def generate_sample_vm_list():
 </root>
 </output>
     """
+
+
+def generate_vf_state_data():
+    return """<?xml version="1.0" encoding="utf-8"?>
+<output xmlns="http://www.vmware.com/Products/ESX/5.0/esxcli">
+<root>
+   <list type="structure">
+      <structure typeName="Nic">
+         <field name="AdminStatus">
+            <string>Up</string>
+         </field>
+         <field name="DPUId">
+            <string>N/A</string>
+         </field>
+         <field name="Description">
+            <string>Intel(R) Ethernet Controller X550</string>
+         </field>
+         <field name="Driver">
+            <string>ixgben</string>
+         </field>
+         <field name="Duplex">
+            <string>Full</string>
+         </field>
+         <field name="Link">
+            <string>Up</string>
+         </field>
+         <field name="LinkStatus">
+            <string>Up</string>
+         </field>
+         <field name="MACAddress">
+            <string>78:ac:44:07:b2:c4</string>
+         </field>
+         <field name="MTU">
+            <integer>1500</integer>
+         </field>
+         <field name="Name">
+            <string>vmnic0</string>
+         </field>
+         <field name="PCIDevice">
+            <string>0000:18:00.0</string>
+         </field>
+         <field name="Speed">
+            <integer>10000</integer>
+         </field>
+      </structure>
+      <structure typeName="Nic">
+         <field name="AdminStatus">
+            <string>Up</string>
+         </field>
+         <field name="DPUId">
+            <string>N/A</string>
+         </field>
+         <field name="Description">
+            <string>Intel(R) Ethernet Controller X550</string>
+         </field>
+         <field name="Driver">
+            <string>ixgben</string>
+         </field>
+         <field name="Duplex">
+            <string>Full</string>
+         </field>
+         <field name="Link">
+            <string>Up</string>
+         </field>
+         <field name="LinkStatus">
+            <string>Up</string>
+         </field>
+         <field name="MACAddress">
+            <string>78:ac:44:07:b2:c5</string>
+         </field>
+         <field name="MTU">
+            <integer>1500</integer>
+         </field>
+         <field name="Name">
+            <string>vmnic1</string>
+         </field>
+         <field name="PCIDevice">
+            <string>0000:18:00.1</string>
+         </field>
+         <field name="Speed">
+            <integer>10000</integer>
+         </field>
+      </structure>
+      <structure typeName="Nic">
+         <field name="AdminStatus">
+            <string>Up</string>
+         </field>
+         <field name="DPUId">
+            <string>N/A</string>
+         </field>
+         <field name="Description">
+            <string>Intel(R) I350 Gigabit Network Connection</string>
+         </field>
+         <field name="Driver">
+            <string>igbn</string>
+         </field>
+         <field name="Duplex">
+            <string>Half</string>
+         </field>
+         <field name="Link">
+            <string>Down</string>
+         </field>
+         <field name="LinkStatus">
+            <string>Down</string>
+         </field>
+         <field name="MACAddress">
+            <string>78:ac:44:07:b2:c6</string>
+         </field>
+         <field name="MTU">
+            <integer>1500</integer>
+         </field>
+         <field name="Name">
+            <string>vmnic2</string>
+         </field>
+         <field name="PCIDevice">
+            <string>0000:19:00.0</string>
+         </field>
+         <field name="Speed">
+            <integer>0</integer>
+         </field>
+      </structure>
+      <structure typeName="Nic">
+         <field name="AdminStatus">
+            <string>Up</string>
+         </field>
+         <field name="DPUId">
+            <string>N/A</string>
+         </field>
+         <field name="Description">
+            <string>Intel(R) I350 Gigabit Network Connection</string>
+         </field>
+         <field name="Driver">
+            <string>igbn</string>
+         </field>
+         <field name="Duplex">
+            <string>Half</string>
+         </field>
+         <field name="Link">
+            <string>Down</string>
+         </field>
+         <field name="LinkStatus">
+            <string>Down</string>
+         </field>
+         <field name="MACAddress">
+            <string>78:ac:44:07:b2:c7</string>
+         </field>
+         <field name="MTU">
+            <integer>1500</integer>
+         </field>
+         <field name="Name">
+            <string>vmnic3</string>
+         </field>
+         <field name="PCIDevice">
+            <string>0000:19:00.1</string>
+         </field>
+         <field name="Speed">
+            <integer>0</integer>
+         </field>
+      </structure>
+      <structure typeName="Nic">
+         <field name="AdminStatus">
+            <string>Up</string>
+         </field>
+         <field name="DPUId">
+            <string>N/A</string>
+         </field>
+         <field name="Description">
+            <string>Intel(R) Ethernet Controller XL710 for 40GbE QSFP+</string>
+         </field>
+         <field name="Driver">
+            <string>i40en</string>
+         </field>
+         <field name="Duplex">
+            <string>Full</string>
+         </field>
+         <field name="Link">
+            <string>Up</string>
+         </field>
+         <field name="LinkStatus">
+            <string>Up</string>
+         </field>
+         <field name="MACAddress">
+            <string>f8:f2:1e:bc:f0:80</string>
+         </field>
+         <field name="MTU">
+            <integer>1500</integer>
+         </field>
+         <field name="Name">
+            <string>vmnic4</string>
+         </field>
+         <field name="PCIDevice">
+            <string>0000:3b:00.0</string>
+         </field>
+         <field name="Speed">
+            <integer>40000</integer>
+         </field>
+      </structure>
+      <structure typeName="Nic">
+         <field name="AdminStatus">
+            <string>Up</string>
+         </field>
+         <field name="DPUId">
+            <string>N/A</string>
+         </field>
+         <field name="Description">
+            <string>Intel(R) Ethernet Controller XL710 for 40GbE QSFP+</string>
+         </field>
+         <field name="Driver">
+            <string>i40en</string>
+         </field>
+         <field name="Duplex">
+            <string>Full</string>
+         </field>
+         <field name="Link">
+            <string>Up</string>
+         </field>
+         <field name="LinkStatus">
+            <string>Up</string>
+         </field>
+         <field name="MACAddress">
+            <string>f8:f2:1e:bc:f0:81</string>
+         </field>
+         <field name="MTU">
+            <integer>9000</integer>
+         </field>
+         <field name="Name">
+            <string>vmnic5</string>
+         </field>
+         <field name="PCIDevice">
+            <string>0000:3b:00.1</string>
+         </field>
+         <field name="Speed">
+            <integer>40000</integer>
+         </field>
+      </structure>
+      <structure typeName="Nic">
+         <field name="AdminStatus">
+            <string>Up</string>
+         </field>
+         <field name="DPUId">
+            <string>N/A</string>
+         </field>
+         <field name="Description">
+            <string>Intel(R) Ethernet Controller XXV710 for 25GbE SFP28</string>
+         </field>
+         <field name="Driver">
+            <string>i40en</string>
+         </field>
+         <field name="Duplex">
+            <string>Full</string>
+         </field>
+         <field name="Link">
+            <string>Up</string>
+         </field>
+         <field name="LinkStatus">
+            <string>Up</string>
+         </field>
+         <field name="MACAddress">
+            <string>40:a6:b7:35:6e:30</string>
+         </field>
+         <field name="MTU">
+            <integer>9000</integer>
+         </field>
+         <field name="Name">
+            <string>vmnic6</string>
+         </field>
+         <field name="PCIDevice">
+            <string>0000:88:00.0</string>
+         </field>
+         <field name="Speed">
+            <integer>25000</integer>
+         </field>
+      </structure>
+      <structure typeName="Nic">
+         <field name="AdminStatus">
+            <string>Up</string>
+         </field>
+         <field name="DPUId">
+            <string>N/A</string>
+         </field>
+         <field name="Description">
+            <string>Intel(R) Ethernet Controller XXV710 for 25GbE SFP28</string>
+         </field>
+         <field name="Driver">
+            <string>i40en</string>
+         </field>
+         <field name="Duplex">
+            <string>Full</string>
+         </field>
+         <field name="Link">
+            <string>Up</string>
+         </field>
+         <field name="LinkStatus">
+            <string>Up</string>
+         </field>
+         <field name="MACAddress">
+            <string>40:a6:b7:35:6e:31</string>
+         </field>
+         <field name="MTU">
+            <integer>1500</integer>
+         </field>
+         <field name="Name">
+            <string>vmnic7</string>
+         </field>
+         <field name="PCIDevice">
+            <string>0000:88:00.1</string>
+         </field>
+         <field name="Speed">
+            <integer>25000</integer>
+         </field>
+      </structure>
+   </list>
+</root>
+</output>
+"""

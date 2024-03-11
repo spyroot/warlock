@@ -78,13 +78,12 @@ class SSHOperator:
                                         f"Make sure you generate key first")
             self._public_key_path = default_pubkey_path
 
-        SSHOperator.__check_required()
-
         # all persistent connection
         self._persistent_connections = {}
 
         # for key auth we need push key if it is first time.
         if self._is_password_auth is False:
+            SSHOperator.__check_required()
             self.__initial_pubkey_exchange()
 
     @staticmethod
