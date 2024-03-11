@@ -532,7 +532,7 @@ class EsxiState:
             module_name: str = "icen"
     ):
         """Read network adapter stats
-        :param module_name:  Name of the adapter. "vmnic0" etc
+        :param module_name:  Name of the adapter. "vmnic0" etc/
         :return:
         """
         cmd = f"esxcli --formatter=xml system module parameters list -m {module_name}"
@@ -541,8 +541,38 @@ class EsxiState:
             return json.loads(EsxiState.xml2json(_data))
         return []
 
+    def read_adapter_driver(
+            self,
+            nic: str = "vmnic0",
+    ):
+        """Read network adapter and return driver name
+        :param nic:  vmnic0
+        :return: driver name
+        """
+        cmd = f"esxcli --formatter=xml network nic get -n {nic}"
+        _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
+        if exit_code == 0 and _data is not None:
+            data = json.loads(EsxiState.complex_xml2json(_data))
+            if isinstance(data, list) and len(data) > 0:
+                driver_info = data[0].get('DriverInfo')
+                if driver_info:
+                    driver = driver_info.get('Driver')
+                    if driver:
+                        return driver
+        return None
+
+    def read_adapter_parameters(
+            self,
+            nic: str = "vmnic0"
+    ):
+        module_name = self.read_adapter_driver(nic=nic)
+        if module_name is not None:
+            return self.read_module_parameters(module_name=module_name)
+        return []
+
     def enable_sriov(
-            self, nic: str,
+            self,
+            nic: str,
             num_vfs: int
     ) -> bool:
         """
@@ -566,6 +596,36 @@ class EsxiState:
         return exit_code == 0
 
     @staticmethod
+    def complex_xml2json(xml_data: str) -> str:
+        """
+        Converts XML data to JSON, handling nested structures and lists.
+        """
+        def parse_element(element):
+            """
+            Recursively parses XML elements to build a Python dict.
+            """
+            tag_name = element.tag.split('}', 1)[-1]
+            if tag_name == 'structure':
+                return {child.get('name'): parse_element(child[0]) for child in element}
+            elif tag_name == 'list':
+                return [parse_element(child) for child in element]
+            elif tag_name == 'field':
+                return parse_element(element[0])
+            else:
+                if tag_name == 'integer':
+                    return int(element.text)
+                elif tag_name == 'boolean':
+                    return element.text.lower() == 'true'
+                else:  # Fallback for 'string' and unrecognized tags
+                    return element.text
+
+        ns = {'esxcli': 'http://www.vmware.com/Products/ESX/5.0/esxcli'}
+        root = ET.fromstring(xml_data)
+        parsed_data = [parse_element(structure) for structure in root.findall('.//esxcli:structure', ns)]
+        json_output = json.dumps(parsed_data, indent=4)
+        return json_output
+
+    @staticmethod
     def xml2json(
             xml_data: str
     ) -> str:
@@ -578,7 +638,6 @@ class EsxiState:
         """
         root = ET.fromstring(xml_data)
         data_list = []
-
         ns = {'esxcli': 'http://www.vmware.com/Products/ESX/5.0/esxcli'}
         for structure in root.findall('.//esxcli:list/esxcli:structure', ns):
             nic_info = {}
@@ -591,6 +650,9 @@ class EsxiState:
 
                     if field_type == 'integer':
                         field_value = int(field_value)
+
+                    if field_type == 'boolean':
+                        field_value = True if field_value.lower() == 'true' else False
 
                     nic_info[field_name] = field_value
             data_list.append(nic_info)

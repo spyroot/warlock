@@ -4,7 +4,10 @@ import random
 
 from tests.extended_test_case import ExtendedTestCase
 from tests.test_utils import (
-    generate_sample_adapter_list_xml, generate_sample_vm_list, generate_vf_state_data
+    generate_sample_adapter_list_xml,
+    generate_sample_vm_list,
+    generate_vf_state_data,
+    generate_nic_data
 )
 from warlock.esxi_state import EsxiState
 from warlock.ssh_operator import SSHOperator
@@ -97,6 +100,12 @@ class TestsEsxiState(ExtendedTestCase):
                             f"NIC entry {nic['Name']} "
                             f"is missing keys: {missing_keys}")
 
+    def test_xml_nic_data(self):
+        """Tests we can parse nic list"""
+        json_data = EsxiState.complex_xml2json(generate_nic_data())
+        self.assertIsNotNone(json_data, "json_data must not be None")
+        self.assertIsInstance(json_data, str, "json_data must be a string")
+
     def test_xml_to_json_vm_list(self):
         """Tests that we can parse vm list """
         json_data = EsxiState.xml2json(generate_sample_vm_list())
@@ -148,19 +157,54 @@ class TestsEsxiState(ExtendedTestCase):
                                 f"NIC entry {nic['Name']} "
                                 f"is missing keys: {missing_keys}")
 
-    def test_read_module_parameters(self):
-        """Tests we can parse nic list"""
+    def test_can_read_module_parameters(self):
+        """Tests test we can read driver/module parameters t"""
         with EsxiState.from_optional_credentials(
                 esxi_fqdn=self.esxi_fqdn,
                 username=self.username,
                 password=self.password
         ) as esxi_host_state:
             module_parameters = esxi_host_state.read_module_parameters()
-            print(module_parameters)
+            self.assertIsNotNone(module_parameters, "read_module_parameters must empty list or a list is not a None")
+
+    def test_cannot_read_module_parameters(self):
+        """Tests test we can read driver/module parameters t"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            module_parameters = esxi_host_state.read_module_parameters(module_name="bad")
+            self.assertTrue([], module_parameters, "for bad module name should return empty list")
+
+    def test_can_read_adapter_driver(self):
+        """Tests can parse nic list"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            adapter_driver = esxi_host_state.read_adapter_driver()
+            self.assertIsNotNone(adapter_driver, "read_adapter_driver should return string")
+
+    def test_can_read_adapter_parameters(self):
+        """Tests caller can read adapter parameters"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            module_param = esxi_host_state.read_adapter_parameters(nic="vmnic0")
+            self.assertIsNotNone(module_param, "read_adapter_parameters should return string")
+            self.assertIsInstance(module_param, list, "read_adapter_parameters should return string")
+            for record in module_param:
+                self.assertIn("Description", record, "Record should contain 'Description'")
+                self.assertIn("Name", record, "Record should contain 'Name'")
+                self.assertIn("Type", record, "Record should contain 'Type'")
+                self.assertIn("Value", record, "Record should contain 'Value'")
 
     def test_read_vm_list(self):
         """Tests we can parse vm list"""
-
         with EsxiState.from_optional_credentials(
                 esxi_fqdn=self.esxi_fqdn,
                 username=self.username,
@@ -220,7 +264,6 @@ class TestsEsxiState(ExtendedTestCase):
             pf_list = esxi_host_state.read_pf_adapter_names()
             for pf in pf_list:
                 vf_list = esxi_host_state.read_network_vf_list(pf_adapter_name=pf)
-                print(type(vf_list))
                 expected_keys = {
                     "Active", "OwnerWorldID", "PCIAddress", "VFID"
                 }

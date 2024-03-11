@@ -1557,3 +1557,100 @@ def generate_vf_state_data():
 </root>
 </output>
 """
+
+
+def generate_nic_data():
+    return """<?xml version="1.0" encoding="utf-8"?>
+    <output xmlns="http://www.vmware.com/Products/ESX/5.0/esxcli">
+    <root>
+       <structure typeName="NICInfo">
+          <field name="AdvertisedAutoNegotiation">
+             <boolean>true</boolean>
+          </field>
+          <field name="AdvertisedLinkModes">
+             <list type="string">
+                <string>Auto</string>
+                <string>100BaseT/Full</string>
+                <string>1000BaseT/Full</string>
+                <string>2500BaseT/Full</string>
+                <string>5000BaseT/Full</string>
+                <string>10000BaseT/Full</string>
+             </list>
+          </field>
+          <field name="AutoNegotiation">
+             <boolean>true</boolean>
+          </field>
+          <field name="BackingDPUId">
+             <string>N/A</string>
+          </field>
+          <field name="CableType">
+             <string>Twisted Pair</string>
+          </field>
+          <field name="CurrentMessageLevel">
+             <integer>0</integer>
+          </field>
+          <field name="DriverInfo">
+             <structure typeName="NICDriverInfo">
+                <field name="BusInfo">
+                   <string>0000:18:00:0</string>
+                </field>
+                <field name="Driver">
+                   <string>ixgben</string>
+                </field>
+                <field name="FirmwareVersion">
+                   <string>3.30 0x800014a5, 20.5.15</string>
+                </field>
+                <field name="Version">
+                   <string>1.15.1.0</string>
+                </field>
+             </structure>
+          </field>
+          <field name="LinkDetected">
+             <boolean>true</boolean>
+          </field>
+          <field name="LinkStatus">
+             <string>Up </string>
+          </field>
+          <field name="Name">
+             <string>vmnic0</string>
+          </field>
+          <field name="PHYAddress">
+             <integer>0</integer>
+          </field>
+          <field name="PauseAutonegotiate">
+             <boolean>false</boolean>
+          </field>
+          <field name="PauseRX">
+             <boolean>true</boolean>
+          </field>
+          <field name="PauseTX">
+             <boolean>true</boolean>
+          </field>
+          <field name="SupportedPorts">
+             <list type="string">
+                <string>TP</string>
+             </list>
+          </field>
+          <field name="SupportsAutoNegotiation">
+             <boolean>true</boolean>
+          </field>
+          <field name="SupportsPause">
+             <boolean>true</boolean>
+          </field>
+          <field name="SupportsWakeon">
+             <boolean>true</boolean>
+          </field>
+          <field name="Transceiver">
+             <string></string>
+          </field>
+          <field name="VirtualAddress">
+             <string>00:50:56:58:e5:65</string>
+          </field>
+          <field name="Wakeon">
+             <list type="string">
+                <string>MagicPacket(tm)</string>
+             </list>
+          </field>
+       </structure>
+    </root>
+    </output>"""
