@@ -1,11 +1,15 @@
 """
 EsxiState, designed to encapsulate reading esxi state information.
-i.e. whatever we need read from system directly.  either vCenter
-has no particular IP nor ESXi API provide no access.
+i.e. whatever we need read from a system directly.  either vCenter
+has no particular metric nor ESXi API provide no access.
 
 In all cases we need to be root on the host.
-
 EsxiState delegate all execution operation via SSH to SSHOperator.
+
+The data we can collect from ESXi state is CPU / Network information
+metric. For example if entity perform some set of test for SRIOV
+we can collect sriov related metric data pkt drop / core utilization
+interrupts etc.
 
 Author: Mus
  spyroot@gmail.com
@@ -182,6 +186,9 @@ class EsxiState:
             self
     ) -> List[str]:
         """Read all adapter names and return list of names
+        - if failed to read it will return an empty list
+          in case of SSH transport issues exception raised.
+
         :return: list of adapter names
         """
         nic_list = self.read_adapter_list()
@@ -213,7 +220,7 @@ class EsxiState:
             self,
             pf_adapter_name: str = "vmnic0"
     ) -> List[Dict[str, Any]]:
-        """Method return list of all VF for particular PF
+        """Method return list of all VF for particular network adapter PF.
         :param pf_adapter_name: PF name of the adapter. "vmnic0" etc.
         :return: a list of VF each is dictionary
         """
@@ -227,8 +234,11 @@ class EsxiState:
             self,
             pf_adapter_name: str = "vmnic0"
     ) -> List[int]:
-        """
-        Reads and returns list of all active vf for particular PF.
+        """Reads and returns list of all active VF on a particular PF.
+           if SRIOV not enabled and caller provided correct vmnic
+           the list is empty.
+        :param pf_adapter_name:  PF name of the adapter. "vmnic0"
+        :return: list of active VF on a particular adapter
         """
         vfs = self.read_network_vf_list(pf_adapter_name=pf_adapter_name)
         return [vf_dict['VFID'] for vf_dict in vfs if
@@ -239,6 +249,8 @@ class EsxiState:
             adapter_name: str = "vmnic0"
     ):
         """Read network adapter stats
+        :param adapter_name:  Name of the adapter. "vmnic0" etc
+        :return:
         """
         cmd = f"esxcli --formatter=xml network nic stats get -n {adapter_name}"
         _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
@@ -253,6 +265,9 @@ class EsxiState:
     ) -> List[Dict[str, Any]]:
         """
         Reads VF stats from the ESXi host.
+        :param adapter_name:  Name of the adapter. "vmnic0"
+        :param vf_id:  VF ID to read. "0" etc.
+        :return: List that store stats as dictionaries
         """
         vf_id_str = str(vf_id)
         cmd = f"esxcli --formatter=xml network sriovnic vf stats -n {adapter_name} -v {vf_id_str}"
@@ -262,34 +277,53 @@ class EsxiState:
         return []
 
     def read_adapter_list(self):
-        """
-        Read network adapter list
-        :return:
+        """Read network adapter list.
+
+         Data
+
+            [
+              {
+                  'AdminStatus': 'Up',
+                   'DPUId': 'N/A',
+                   'Description': 'Intel(R) Ethernet Controller X550',
+                   'Driver': 'ixgben',
+                   'Duplex': 'Full',
+                   'Link': 'Up',
+                   'LinkStatus': 'Up',
+                   'MACAddress': '78:ac:44:07:b2:c4',
+                   'MTU': 1500,
+                   'Name': 'vmnic0',
+                   'PCIDevice': '0000:18:00.0',
+               },
+               // another adapter
+               ]
+
+        :return: a list of dictionaries containing all adapters
         """
         _data, exit_code, _ = self._ssh_operator.run(
             self.fqdn, "esxcli --formatter=xml network nic list")
         if exit_code == 0 and _data is not None:
             return json.loads(EsxiState.xml2json(_data))
-        return {}
+        return []
 
-    def read_vm_list(
+    def read_vm_process_list(
             self
     ) -> Dict[str, Any]:
         """
-        Reads vm list from esxi and return as json data
+        Reads VM process list from esxi and return as json data.
         :return:
         """
         _data, exit_code, _ = self._ssh_operator.run(
             self.fqdn, "esxcli --formatter=xml vm process list")
         if exit_code == 0 and _data is not None:
             return json.loads(EsxiState.xml2json(_data))
-        return {}
+        return []
 
     def read_dvs_list(
             self
     ) -> List[Dict[str, Any]]:
         """
-        Reads vm list from esxi and return as json data
+        Reads vm list from esxi and return as json data.
         :return:
         """
         _data, exit_code, _ = self._ssh_operator.run(
@@ -329,6 +363,7 @@ class EsxiState:
     ) -> Dict[int, str]:
         """Return dictionary of port id to vm name in context net-stats vm name
         """
+
         def is_number(s):
             """Checks if the input string s is a number."""
             try:
@@ -351,9 +386,10 @@ class EsxiState:
             is_abs: Optional[bool] = False
     ):
         """
-        VM_FULL_NAME is net-stat name i.e.
-        SRIOVmy_vm_name.eth7
-        Retrieves network stats for a specified VM.
+        Reads vm net statistics from net-stats.
+        :param vm_name: is vm name accepted by net-stats i.e. SRIOVmy_vm_name.eth7
+        :param is_abs:  if value caller need absolute values
+        :return:  dictionary that hold all statistics.
         """
         _data, exit_code, _ = self._ssh_operator.run(
             self.fqdn, f"net-stats -V {vm_name}" if is_abs else f"net-stats -a -V {vm_name}")
@@ -393,11 +429,12 @@ class EsxiState:
             self,
             nic: str = "vmnic0"
     ) -> List[str]:
+        """Lists hardware capabilities of a specified network adapter.
+        :param nic:
+        :return:
         """
-        Lists hardware capabilities of a specified network adapter.
-        """
-        command = f"vsish -e ls /net/sriov/{nic}/hwCapabilities"
-        _data, exit_code, _ = self._ssh_operator.run(self.fqdn, command)
+        _data, exit_code, _ = self._ssh_operator.run(
+            self.fqdn, f"vsish -e ls /net/sriov/{nic}/hwCapabilities")
         if exit_code == 0 and _data is not None:
             _cap = _data.splitlines()
             _cap = [cap.strip() for cap in _cap]
@@ -410,10 +447,13 @@ class EsxiState:
             capability: Optional[str] = "CAP_SRIOV"
     ) -> bool:
         """
-        Gets a specific hardware capability for a specified network adapter.
+        Return bool if a specific hardware capability enabled or not
+        :param nic: a string representing the name of the adapter
+        :param capability: a string representing the capability CAP_SRIOV etc.
+        :return:
         """
-        command = f"vsish -e get /net/sriov/{nic}/hwCapabilities/{capability}"
-        _data, exit_code, _ = self._ssh_operator.run(self.fqdn, command)
+        _data, exit_code, _ = self._ssh_operator.run(
+            self.fqdn, f"vsish -e get /net/sriov/{nic}/hwCapabilities/{capability}")
         if exit_code == 0 and _data is not None:
             if exit_code == 0 and _data is not None:
                 return _data.strip().lower() in ["1", "true", "on"]
@@ -439,10 +479,11 @@ class EsxiState:
 
     def read_sriov_queue_info(
             self,
-            nic="vmnic0"
+            nic: str = "vmnic0"
     ) -> Dict[str, Any]:
-        """
-        Retrieves and converts queue information for a specified NIC into JSON.
+        """ Retrieves and converts queue information for a specified NIC into JSON.
+        :param nic:  a string representing the NIC to retrieve default vmnic0
+        :return: a dictionary contain TX and RX queue information. (high level view)
         """
         rx_info = {}
         tx_info = {}
@@ -462,6 +503,68 @@ class EsxiState:
             "tx_info": tx_info
         }
 
+    def write_ring_size(
+            self,
+            nic: str,
+            tx_int: int,
+            rx_int: int
+    ) -> bool:
+        """Update tx and rx ring size for a specified network adapter.
+        :param nic:  a string representing the NIC vmnic0 etc.
+        :param tx_int: ring tx size
+        :param rx_int: ring rx size
+        :return: a boolean indicating whether the tx and rx ring size were updated
+        """
+        def is_power_of_two(n):
+            return n != 0 and (n & (n - 1)) == 0
+
+        if not is_power_of_two(tx_int):
+            raise ValueError(f"tx_int ({tx_int}) must be a power of 2.")
+        if not is_power_of_two(rx_int):
+            raise ValueError(f"rx_int ({rx_int}) must be a power of 2.")
+
+        cmd = f"esxcli network nic ring current set -n {nic} -r {rx_int} -t {tx_int}"
+        _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
+        return exit_code == 0
+
+    def read_module_parameters(
+            self,
+            module_name: str = "icen"
+    ):
+        """Read network adapter stats
+        :param module_name:  Name of the adapter. "vmnic0" etc
+        :return:
+        """
+        cmd = f"esxcli --formatter=xml system module parameters list -m {module_name}"
+        _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
+        if exit_code == 0 and _data is not None:
+            return json.loads(EsxiState.xml2json(_data))
+        return []
+
+    def enable_sriov(
+            self, nic: str,
+            num_vfs: int
+    ) -> bool:
+        """
+        Enable SR-IOV on a specified network adapter with a given number of Virtual Functions (VFs).
+        :param nic: A string representing the NIC (e.g., vmnic0).
+        :param num_vfs: The number of Virtual Functions to enable for the NIC.
+        :return: A boolean indicating whether SR-IOV was enabled successfully.
+        """
+        # Validate num_vfs is a positive integer
+        if not isinstance(num_vfs, int) or num_vfs <= 0:
+            raise ValueError(f"num_vfs ({num_vfs}) must be a positive integer.")
+
+        # esxcli system module parameters set -m ixgbe -p max_vfs=0,10,10,10
+        # Command to enable SR-IOV on the NIC
+        enable_sriov_cmd = "esxcli system module parameters set -m ixgbe -p max_vfs=0,10,10,10"
+        _data, exit_code, _ = self._ssh_operator.run(self.fqdn, enable_sriov_cmd)
+
+# esxcli system module parameters list -m icen
+
+        # Verify if enabling SR-IOV was successful
+        return exit_code == 0
+
     @staticmethod
     def xml2json(
             xml_data: str
@@ -477,7 +580,6 @@ class EsxiState:
         data_list = []
 
         ns = {'esxcli': 'http://www.vmware.com/Products/ESX/5.0/esxcli'}
-
         for structure in root.findall('.//esxcli:list/esxcli:structure', ns):
             nic_info = {}
             for field in structure.findall('esxcli:field', ns):

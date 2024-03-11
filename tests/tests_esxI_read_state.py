@@ -148,6 +148,16 @@ class TestsEsxiState(ExtendedTestCase):
                                 f"NIC entry {nic['Name']} "
                                 f"is missing keys: {missing_keys}")
 
+    def test_read_module_parameters(self):
+        """Tests we can parse nic list"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            module_parameters = esxi_host_state.read_module_parameters()
+            print(module_parameters)
+
     def test_read_vm_list(self):
         """Tests we can parse vm list"""
 
@@ -161,7 +171,7 @@ class TestsEsxiState(ExtendedTestCase):
                 "UUID", "VMXCartelID", "WorldID"
             }
 
-            vm_list = esxi_host_state.read_vm_list()
+            vm_list = esxi_host_state.read_vm_process_list()
             self.assertIsNotNone(vm_list, "vm_list must empty list or a list is not a None")
 
             for vm in vm_list:
