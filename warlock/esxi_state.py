@@ -74,6 +74,7 @@ class EsxiState:
         self.fqdn = fqdn if fqdn is not None else default_vcenter_ip
         self.username = username if username is not None else default_username
         self.password = password if password is not None else default_password
+        self._cache = {}
 
     def __enter__(self):
         """
@@ -209,10 +210,21 @@ class EsxiState:
 
         :return: list of adapter names
         """
+
+        if 'adapter_names' in self._cache:
+            return self._cache['adapter_names']
+
         nic_list = self.read_adapter_list()
         if nic_list is None or len(nic_list) == 0:
             return []
-        return [n['Name'] for n in nic_list]
+
+        nic_list = self.read_adapter_list()
+        if nic_list is None or len(nic_list) == 0:
+            return []
+
+        adapter_names = [n['Name'] for n in nic_list]
+        self._cache['adapter_names'] = adapter_names
+        return adapter_names
 
     def read_pf_adapter_names(
             self
@@ -221,6 +233,10 @@ class EsxiState:
         :return: list of adapter names
         """
         # esxcli network sriovnic list
+
+        if 'pf_adapter_names' in self._cache:
+            return self._cache['pf_adapter_names']
+
         nic_list = self.read_adapter_list()
         if nic_list is None or len(nic_list) == 0:
             return []
@@ -232,6 +248,7 @@ class EsxiState:
             if data is not None and len(data) > 0:
                 _pf_names.append(pf_name)
 
+        self._cache['pf_adapter_names'] = _pf_names
         return _pf_names
 
     def read_network_vf_list(
