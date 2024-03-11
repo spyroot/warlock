@@ -41,39 +41,46 @@ class TestsEsxiState(ExtendedTestCase):
         self.test_default_adapter_name = 'eth0'
 
     def test_init_from_credentials(self):
-        """Tests constructors"""
+        """Tests EsxiState constructors from args """
 
-        esxi_host_state = EsxiState.from_optional_credentials(
-            esxi_fqdn=self.esxi_fqdn,
-            username=self.username,
-            password=self.password
-        )
-        self.assertEqual(esxi_host_state.fqdn, self.esxi_fqdn)
-        self.assertEqual(esxi_host_state.username, self.username)
-        self.assertEqual(esxi_host_state.password, self.password)
-
-        self.assertIsNotNone(esxi_host_state._ssh_operator)
-        self.assertIsInstance(esxi_host_state._ssh_operator, SSHOperator)
-        self.assertTrue(esxi_host_state._ssh_operator.has_active_connection(self.esxi_fqdn),
-                        "remote host should be active")
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            self.assertEqual(esxi_host_state.fqdn, self.esxi_fqdn)
+            self.assertEqual(esxi_host_state.username, self.username)
+            self.assertEqual(esxi_host_state.password, self.password)
+            self.assertIsNotNone(esxi_host_state._ssh_operator)
+            self.assertIsInstance(esxi_host_state._ssh_operator, SSHOperator)
+            self.assertTrue(
+                esxi_host_state._ssh_operator.has_active_connection(self.esxi_fqdn),
+                "remote host should be active"
+            )
+            self.assertTrue(
+                len(esxi_host_state._ssh_operator._persistent_connections) == 1,
+                "remote host should be active"
+            )
 
     def test_failure_on_invalid_esxi_fqdn_type(self):
         """Test that object creation fails when esxi_fqdn is not a string."""
         with self.assertRaises(TypeError):
-            EsxiState.from_optional_credentials(
-                esxi_fqdn=None,
-                username="user",
-                password="pass"
-            )
+            with EsxiState.from_optional_credentials(
+                    esxi_fqdn=None,
+                    username="user",
+                    password="pass"
+            ) as esxi_host_state:
+                self.assertIsNone(esxi_host_state._ssh_operator)
 
     def test_failure_on_invalid_username_type(self):
         """Test that object creation fails when username is not a string."""
         with self.assertRaises(TypeError):
-            EsxiState.from_optional_credentials(
-                esxi_fqdn="10.252.80.108",
-                username=None,
-                password="pass"
-            )
+            with EsxiState.from_optional_credentials(
+                    esxi_fqdn="10.252.80.108",
+                    username=None,
+                    password="pass"
+            ) as esxi_host_state:
+                self.assertIsNone(esxi_host_state._ssh_operator)
 
     def test_failure_on_invalid_password_type(self):
         """Test that object creation fails when password is not a string."""
@@ -112,31 +119,41 @@ class TestsEsxiState(ExtendedTestCase):
         """Tests that we can parse vm list """
         json_data = EsxiState.xml2json(generate_sample_vm_list())
         expected_keys = {
-            "ConfigFile", "DisplayName", "ProcessID",
-            "UUID", "VMXCartelID", "WorldID"
+            "ConfigFile",
+            "DisplayName",
+            "ProcessID",
+            "UUID",
+            "VMXCartelID",
+            "WorldID"
         }
         vm_list = json.loads(json_data)
         for vm in vm_list:
             vm_keys = set(vm.keys())
             missing_keys = expected_keys - vm_keys
-            self.assertTrue(not missing_keys,
-                            f"VM entry '{vm.get('DisplayName', 'Unknown')}' "
-                            f"is missing keys: {missing_keys}")
+            self.assertTrue(
+                not missing_keys,
+                f"VM entry '{vm.get('DisplayName', 'Unknown')}' "
+                f"is missing keys: {missing_keys}")
 
     def test_xml_vf_stats(self):
         """Tests that we can parse vm list """
         json_data = EsxiState.xml2json(generate_vf_state_data())
         expected_keys = {
-            "ConfigFile", "DisplayName", "ProcessID",
-            "UUID", "VMXCartelID", "WorldID"
+            "ConfigFile",
+            "DisplayName",
+            "ProcessID",
+            "UUID",
+            "VMXCartelID",
+            "WorldID"
         }
         vm_list = json.loads(json_data)
         for vm in vm_list:
             vm_keys = set(vm.keys())
             missing_keys = expected_keys - vm_keys
-            self.assertTrue(not missing_keys,
-                            f"VM entry '{vm.get('DisplayName', 'Unknown')}' "
-                            f"is missing keys: {missing_keys}")
+            self.assertTrue(
+                not missing_keys,
+                f"VM entry '{vm.get('DisplayName', 'Unknown')}' "
+                f"is missing keys: {missing_keys}")
 
     def test_read_nic_list(self):
         """Tests we can parse nic list"""
@@ -146,18 +163,20 @@ class TestsEsxiState(ExtendedTestCase):
                 password=self.password
         ) as esxi_host_state:
             nic_list = esxi_host_state.read_adapter_list()
-            expected_keys = {
-                "AdminStatus", "Description", "Driver",
-                "Duplex", "Link", "LinkStatus", "MACAddress",
-                "MTU", "Name", "PCIDevice", "Speed"
-            }
+            esxi_host_state.release()
 
-            for nic in nic_list:
-                nic_keys = set(nic.keys())
-                missing_keys = expected_keys - nic_keys
-                self.assertTrue(not missing_keys,
-                                f"NIC entry {nic['Name']} "
-                                f"is missing keys: {missing_keys}")
+        expected_keys = {
+            "AdminStatus", "Description", "Driver",
+            "Duplex", "Link", "LinkStatus", "MACAddress",
+            "MTU", "Name", "PCIDevice", "Speed"
+        }
+
+        for nic in nic_list:
+            nic_keys = set(nic.keys())
+            missing_keys = expected_keys - nic_keys
+            self.assertTrue(not missing_keys,
+                            f"NIC entry {nic['Name']} "
+                            f"is missing keys: {missing_keys}")
 
     def test_can_read_module_parameters(self):
         """Tests test we can read driver/module parameters t"""
@@ -673,11 +692,11 @@ class TestsEsxiState(ExtendedTestCase):
                 username=self.username,
                 password=self.password
         ) as esxi_host_state:
-
-            esxi_host_state.update_max_vfs("i40en", 16)
+            max_vfs = 16
+            esxi_host_state.update_max_vfs("i40en", max_vfs)
             module_parameters = esxi_host_state.read_module_parameters(module_name="i40en")
             nic_list = esxi_host_state.read_adapters_by_driver("i40en")
-            num_max_vfs = ",".join([str(16) for _ in nic_list])
+            num_max_vfs = ",".join([str(max_vfs) for _ in nic_list])
 
             for param in module_parameters:
                 if param.get('Name') == 'max_vfs':
@@ -866,7 +885,7 @@ class TestsEsxiState(ExtendedTestCase):
                                 "filtering by sriov should return one world id")
 
     def test_can_filtered_sriov_map_vm_hosts_port_ids(self):
-        """Tests read_vm_port_stats """
+        """Tests filtered_map_vm_hosts_port_ids """
         with EsxiState.from_optional_credentials(
                 esxi_fqdn=self.esxi_fqdn,
                 username=self.username,
@@ -929,11 +948,11 @@ class TestsEsxiState(ExtendedTestCase):
                 username=self.username,
                 password=self.password
         ) as esxi_host_state:
+
             vm_names = self.sample_vm_names()
-            args_dict = {vm_name: self.test_default_adapter_name for vm_name in vm_names}
             world_id_map = esxi_host_state.filtered_map_vm_hosts_port_ids(
                 vm_names,
-                args_dict,
+                {vm_name: self.test_default_adapter_name for vm_name in vm_names},
                 is_sriov=True
             )
 
@@ -972,6 +991,7 @@ class TestsEsxiState(ExtendedTestCase):
                 args_dict,
                 is_sriov=False
             )
+
             for vm_name in vm_names:
                 self.assertIn(vm_name, world_id_map, f"{vm_name} should be a key in the result")
                 world_ids = world_id_map[vm_name]['port_ids']
@@ -981,10 +1001,13 @@ class TestsEsxiState(ExtendedTestCase):
                     if port_stats:
                         stats = port_stats[0]
                         self.assertEqual(stats['PortID'], world_id, f"PortID should be {world_id}")
-                        self.assertIn('Transmitpacketsdropped', stats, "'Transmitpacketsdropped' should be a key in the stats")
-                        self.assertIsInstance(stats['Transmitpacketsdropped'], int, "'Transmitpacketsdropped' should be an int")
-                        self.assertIn('Receivepacketsdropped', stats, "'Receivepacketsdropped' should be a key in the stats")
-                        self.assertIsInstance(stats['Receivepacketsdropped'], int, "'Receivepacketsdropped' should be an int")
+                        self.assertIn('Transmitpacketsdropped', stats,
+                                      "'Transmitpacketsdropped' should be a key in the stats")
+                        self.assertIsInstance(stats['Transmitpacketsdropped'], int,
+                                              "'Transmitpacketsdropped' should be an int")
+                        self.assertIn('Receivepacketsdropped', stats,
+                                      "'Receivepacketsdropped' should be a key in the stats")
+                        self.assertIsInstance(stats['Receivepacketsdropped'], int,
+                                              "'Receivepacketsdropped' should be an int")
                     else:
                         self.fail("No port stats returned")
-

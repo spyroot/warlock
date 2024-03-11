@@ -207,6 +207,35 @@ class TesSshRunner(ContainerizedTestCase):
             self.assertNotEqual(exit_code, 0, "Exit code should not be zero")
             self.assertGreater(execution_time, 0, "Execution time should be greater than zero")
 
+    def test_can_xecute_cmd_password_auth(self):
+        """Test does initial ssh pub key copy """
+
+        self.assertIsNotNone(self.ssh_port, "Test expect ssh port")
+        self.assertIsNotNone(self.container_id, "Test expect ssh port")
+
+        _host = f"127.0.0.1:{self.ssh_port}"
+
+        with SSHOperator(
+                remote_hosts=[_host],
+                username=self.ssh_user,
+                password=self.ssh_pass,
+                is_password_auth_only=True
+        ) as ssh_operator:
+            self.assertIsNotNone(ssh_operator, "ssh runner should be none")
+            self.assertEqual(ssh_operator._username, self.ssh_user, f"username should be {self.ssh_user}")
+            self.assertEqual(ssh_operator._password, self.ssh_pass, f"password should be {self.ssh_pass}")
+            self.assertFalse(ssh_operator._is_pubkey_authenticated, "_is_pubkey_authenticated should be false")
+
+            output, exit_code, _ = ssh_operator.run(_host, "echo 'test'")
+            self.assertEqual(output, 'test', f"output should be test")
+            self.assertEqual(exit_code, 0, f"exit code should be 0")
+
+            output, exit_code, execution_time = ssh_operator.run(_host, "non_existing_command")
+            self.assertEqual(output, "", "Output should be empty")
+            self.assertNotEqual(exit_code, 0, "Exit code should not be zero")
+            self.assertGreater(execution_time, 0, "Execution time should be greater than zero")
+
+
     def test_push_and_execute_complex(self):
         """Test does initial ssh pub key copy """
         self.assertIsNotNone(self.ssh_port, "Test expect ssh port")

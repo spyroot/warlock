@@ -134,6 +134,7 @@ class EsxiState:
         output, exit_code, _ = ssh_operator.run(esxi_fqdn, "esxcli --version")
         _esxi_version = cls.__read_version(output)
         if _esxi_version is None:
+            ssh_operator.close_all_connections()
             raise InvalidESXiHostException(esxi_fqdn)
 
         return cls(ssh_operator, None, esxi_fqdn.strip(), username.strip(), password.strip())
@@ -951,13 +952,16 @@ class EsxiState:
             param_value=str(rx_itr)
         )
 
-    def update_tx_itr(self, module_name: str, tx_itr: int) -> bool:
+    def update_tx_itr(
+            self, module_name:
+            str, tx_itr: int
+    ) -> bool:
         """
         Update the default TX interrupt interval parameter for a specified kernel module.
 
         :param module_name: The kernel module name.
         :param tx_itr: The TX interrupt interval in microseconds. Must be in the range [0, 4095].
-        :return: A boolean indicating whether the parameter was successfully updated.
+        :return:  A boolean indicating whether the parameter was successfully updated.
         """
         if not (0 <= tx_itr <= self.INTERRUPT_INTERVAL_RANGE):
             raise ValueError("tx_itr must be between 0 and 4095.")
