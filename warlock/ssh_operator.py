@@ -150,21 +150,21 @@ class SSHOperator:
         else:
             ip, port = host_key, 22
 
+        normalized_key = self.__normalize_host_key(host_key)
+
         if host_key not in self._persistent_connections:
             client = paramiko.SSHClient()
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             client.load_system_host_keys()
             try:
                 client.connect(ip, port=port, username=self._username, password=self._password)
-                self._persistent_connections[host_key] = client
+                self._persistent_connections[normalized_key] = client
             except Exception as e:
-                print(e)
-                print(str(e))
                 client.close()
                 del client
                 raise e
 
-        return self._persistent_connections[host_key]
+        return self._persistent_connections[normalized_key]
 
     def broadcast(
             self,
@@ -349,6 +349,8 @@ class SSHOperator:
 
         :param host_key: IP address or hostname
         """
+        host_key = self.__normalize_host_key(host_key)
+
         if host_key in self._persistent_connections:
             if self._persistent_connections[host_key] is not None:
                 self._persistent_connections[host_key].close()
@@ -369,10 +371,11 @@ class SSHOperator:
             port = '22'
         return f"{ip}:{port}"
 
-    def has_active_connection(self, host_key: str) -> bool:
+    def has_active_connection(
+            self, host_key: str
+    ) -> bool:
         """
         Check if there is an active SSH connection for the given host key.
-
         :param host_key: The host key, typically in the format 'ip:port'.
         :return: True if an active connection exists, False otherwise.
         """
@@ -381,7 +384,8 @@ class SSHOperator:
             return True
         return False
 
-    def get_active_ssh_connection(self, host_key: str) -> SSHClient:
+    def get_active_ssh_connection(
+            self, host_key: str) -> SSHClient:
         """Return ssh connection for passed host
         :param host_key: is host key either IP , IP:port
         :return: SSHClient

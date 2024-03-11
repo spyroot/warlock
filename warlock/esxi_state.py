@@ -88,6 +88,13 @@ class EsxiState:
         if self._ssh_operator is not None:
             self._ssh_operator.close_all_connections()
 
+    def release(self):
+        """
+        Explicitly release resources,  closing all SSH connections.
+        """
+        if self._ssh_operator is not None:
+            self._ssh_operator.close_all_connections()
+
     @classmethod
     def from_optional_credentials(
             cls,
@@ -171,6 +178,13 @@ class EsxiState:
 
         return cls(ssh_operator, None, esxi_fqdn.strip(), username.strip(), password.strip())
 
+    def is_active(self) -> bool:
+        """
+        Checks if there's an active SSH connection to the ESXi host.
+        :return: True if there's an active connection, False otherwise.
+        """
+        return self._ssh_operator.get_active_ssh_connection(self.fqdn) is not None
+
     @staticmethod
     def __read_version(
             command_output: str
@@ -208,8 +222,6 @@ class EsxiState:
         """
         # esxcli network sriovnic list
         nic_list = self.read_adapter_list()
-        print("REading adapter")
-        print(nic_list)
         if nic_list is None or len(nic_list) == 0:
             return []
 
@@ -231,6 +243,69 @@ class EsxiState:
         :return: a list of VF each is dictionary
         """
         cmd = f"esxcli --formatter=xml network sriovnic vf list -n {pf_adapter_name}"
+        _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
+        if exit_code == 0 and _data is not None:
+            return json.loads(EsxiState.xml2json(_data))
+        return []
+
+    def filtered_map_vm_hosts_port_ids(
+            self,
+            vm_names: List[str],
+            vmnic_name: Dict[str, str],
+            is_sriov: Optional[bool] = None,
+    ):
+        """
+        Returns a dictionary mapping VM names to their port IDs, ESXi host, and port VM NIC names filtered
+        by the specified adapter name and SR-IOV flag.
+
+        Once a VM is found on one ESXi host, it's not searched for again on another host.
+
+        :param vm_names: List of VM names to map.
+        :param vmnic_name: Dictionary of VM names to their target adapter names.
+        :param is_sriov: Optional flag to filter NICs based on SR-IOV usage.
+                         If True, only includes NICs with "SRIOV".
+                         If False, excludes those NICs.
+                         If None, includes all NICs.
+        :return: Dictionary mapping VM names to their details including filtered port VM NIC names.
+        """
+        vm_to_port_ids = {}
+        vm_port_id_map = self.read_vm_net_port_id()
+
+        for vm_name in vm_names:
+            target_adapter = vmnic_name.get(vm_name, None)
+            port_ids = []
+            port_vm_nic_name = []
+
+            for port_id, port_vm_name in vm_port_id_map.items():
+                if vm_name in port_vm_name:
+                    include_port = False
+                    if is_sriov is None:
+                        include_port = True
+                    elif is_sriov and "SRIOV" in port_vm_name:
+                        include_port = True
+                    elif not is_sriov and "SRIOV" not in port_vm_name:
+                        include_port = True
+
+                    if include_port and (target_adapter is None or target_adapter in port_vm_name):
+                        port_ids.append(port_id)
+                        port_vm_nic_name.append(port_vm_name)
+
+            if port_ids:
+                vm_to_port_ids[vm_name] = {
+                    'port_ids': port_ids,
+                    'esxi_host': self.fqdn,
+                    'port_vm_nic_name': port_vm_nic_name
+                }
+
+        return vm_to_port_ids
+
+    def read_vm_port_stats(self, world_id):
+        """
+        Retrieve VM port statistics using a given world ID.
+        The world_id can be provided as either an integer or a string.
+        """
+        world_id_str = str(world_id)
+        cmd = f"esxcli --formatter=xml network port stats get -p {world_id_str}"
         _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
         if exit_code == 0 and _data is not None:
             return json.loads(EsxiState.xml2json(_data))
@@ -399,6 +474,7 @@ class EsxiState:
         """
         _data, exit_code, _ = self._ssh_operator.run(
             self.fqdn, f"net-stats -V {vm_name}" if is_abs else f"net-stats -a -V {vm_name}")
+        print(f"net-stats -V {vm_name}" if is_abs else f"net-stats -a -V {vm_name}")
         if exit_code == 0 and _data is not None:
             return json.loads(_data)
         return {}

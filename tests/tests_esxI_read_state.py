@@ -37,6 +37,8 @@ class TestsEsxiState(ExtendedTestCase):
         self.esxi_fqdn = '10.252.80.107'
         self.username = 'root'
         self.password = 'VMware1!'
+        self.test_vms_substring = 'test-np'
+        self.test_default_adapter_name = 'eth0'
 
     def test_init_from_credentials(self):
         """Tests constructors"""
@@ -797,3 +799,192 @@ class TestsEsxiState(ExtendedTestCase):
 
             self.assertIsNotNone(rss_vfs_value, "max_vfs parameter not found.")
             self.assertEqual(rss_vfs_value, rss_value_str, "max_vfs parameter value is not as expected.")
+
+    def test_can_filtered_map_vm_hosts_port_ids(self):
+        """Tests read_vm_port_stats """
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            test_vm_names = []
+            vm_pids = esxi_host_state.read_vm_process_list()
+            if vm_pids and len(vm_pids) > 0:
+                names = [v['DisplayName'] for v in vm_pids if 'DisplayName'
+                         in v and self.test_vms_substring in v['DisplayName']]
+                test_vm_names.extend(names)
+
+            args_dict = {vm_name: self.test_default_adapter_name for vm_name in test_vm_names}
+            world_id_map = esxi_host_state.filtered_map_vm_hosts_port_ids(test_vm_names, args_dict)
+            self.assertIsInstance(world_id_map, dict, "filtered_map_vm_hosts_port_ids should be a dict")
+            for vm_name in test_vm_names:
+                self.assertIn(vm_name, world_id_map, f"{vm_name} should be a key in the result")
+                self.assertIn('port_ids', world_id_map[vm_name], "'port_ids' should be a key in each VM's data")
+                self.assertIn('esxi_host', world_id_map[vm_name], "'esxi_host' should be a key in each VM's data")
+                self.assertIsInstance(world_id_map[vm_name]['port_ids'], list, "'port_ids' should be a list")
+                self.assertIsInstance(world_id_map[vm_name]['esxi_host'], str, "'esxi_host' should be a string")
+                self.assertTrue(world_id_map[vm_name]['port_ids'], "The list of 'port_ids' should not be empty")
+                self.assertTrue(world_id_map[vm_name]['esxi_host'], "The 'esxi_host' should not be empty")
+                self.assertIsInstance(world_id_map[vm_name]['port_vm_nic_name'], list, "'port_ids' should be a list")
+
+    def test_can_filtered_vnic_map_vm_hosts_port_ids(self):
+        """Tests  filtered_map_vm_hosts_port_ids with vnic name"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            test_vm_names = []
+            vm_pids = esxi_host_state.read_vm_process_list()
+            if vm_pids and len(vm_pids) > 0:
+                names = [v['DisplayName'] for v in vm_pids if 'DisplayName'
+                         in v and self.test_vms_substring in v['DisplayName']]
+                test_vm_names.extend(names)
+
+            args_dict = {vm_name: self.test_default_adapter_name for vm_name in test_vm_names}
+            world_id_map = esxi_host_state.filtered_map_vm_hosts_port_ids(
+                test_vm_names,
+                args_dict,
+                is_sriov=False
+            )
+
+            self.assertIsInstance(world_id_map, dict, "filtered_map_vm_hosts_port_ids should be a dict")
+            for vm_name in test_vm_names:
+                self.assertIn(vm_name, world_id_map, f"{vm_name} should be a key in the result")
+                self.assertIn('port_ids', world_id_map[vm_name], "'port_ids' should be a key in each VM's data")
+                self.assertIn('esxi_host', world_id_map[vm_name], "'esxi_host' should be a key in each VM's data")
+                self.assertIsInstance(world_id_map[vm_name]['port_ids'], list, "'port_ids' should be a list")
+                self.assertIsInstance(world_id_map[vm_name]['esxi_host'], str, "'esxi_host' should be a string")
+                self.assertTrue(world_id_map[vm_name]['port_ids'], "The list of 'port_ids' should not be empty")
+                self.assertTrue(world_id_map[vm_name]['esxi_host'], "The 'esxi_host' should not be empty")
+                self.assertIsInstance(world_id_map[vm_name]['port_vm_nic_name'], list, "'port_ids' should be a list")
+
+                self.assertTrue(len(world_id_map[vm_name]['port_ids']) == 1,
+                                "filtering by sriov should return one world id")
+
+                self.assertTrue(len(world_id_map[vm_name]['port_vm_nic_name']) == 1,
+                                "filtering by sriov should return one world id")
+
+    def test_can_filtered_sriov_map_vm_hosts_port_ids(self):
+        """Tests read_vm_port_stats """
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            test_vm_names = []
+            vm_pids = esxi_host_state.read_vm_process_list()
+            if vm_pids and len(vm_pids) > 0:
+                names = [v['DisplayName'] for v in vm_pids if 'DisplayName'
+                         in v and self.test_vms_substring in v['DisplayName']]
+                test_vm_names.extend(names)
+
+            args_dict = {vm_name: self.test_default_adapter_name for vm_name in test_vm_names}
+            world_id_map = esxi_host_state.filtered_map_vm_hosts_port_ids(
+                test_vm_names,
+                args_dict,
+                is_sriov=True
+            )
+            self.assertIsInstance(world_id_map, dict, "filtered_map_vm_hosts_port_ids should be a dict")
+            for vm_name in test_vm_names:
+                self.assertIn(vm_name, world_id_map, f"{vm_name} should be a key in the result")
+                self.assertIn('port_ids', world_id_map[vm_name], "'port_ids' should be a key in each VM's data")
+                self.assertIn('esxi_host', world_id_map[vm_name], "'esxi_host' should be a key in each VM's data")
+                self.assertIsInstance(world_id_map[vm_name]['port_ids'], list, "'port_ids' should be a list")
+                self.assertIsInstance(world_id_map[vm_name]['esxi_host'], str, "'esxi_host' should be a string")
+                self.assertTrue(world_id_map[vm_name]['port_ids'], "The list of 'port_ids' should not be empty")
+                self.assertTrue(world_id_map[vm_name]['esxi_host'], "The 'esxi_host' should not be empty")
+                self.assertIsInstance(world_id_map[vm_name]['port_vm_nic_name'], list, "'port_ids' should be a list")
+
+                # we assert so adapter has SRIOV
+                for nic_name in world_id_map[vm_name]['port_vm_nic_name']:
+                    self.assertIn("SRIOV", nic_name, f"The NIC name '{nic_name}' should include 'SRIOV'")
+
+                self.assertTrue(len(world_id_map[vm_name]['port_ids']) == 1,
+                                "filtering by sriov should return one world id")
+
+                self.assertTrue(len(world_id_map[vm_name]['port_vm_nic_name']) == 1,
+                                "filtering by sriov should return one world id")
+
+    def sample_vm_names(self):
+        """Utilit function to get sampled VM names"""
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            test_vm_names = []
+            vm_pids = esxi_host_state.read_vm_process_list()
+            if vm_pids and len(vm_pids) > 0:
+                names = [v['DisplayName'] for v in vm_pids if 'DisplayName'
+                         in v and self.test_vms_substring in v['DisplayName']]
+                test_vm_names.extend(names)
+            return test_vm_names
+
+    def test_can_read_sriov_vm_port_stats(self):
+        """Tests first world id based  VM Name and adapter name
+        and fetch stats """
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            vm_names = self.sample_vm_names()
+            args_dict = {vm_name: self.test_default_adapter_name for vm_name in vm_names}
+            world_id_map = esxi_host_state.filtered_map_vm_hosts_port_ids(
+                vm_names,
+                args_dict,
+                is_sriov=True
+            )
+
+            for vm_name in vm_names:
+                self.assertIn(vm_name, world_id_map, f"{vm_name} should be a key in the result")
+                world_ids = world_id_map[vm_name]['port_ids']
+                for world_id in world_ids:
+                    port_stats = esxi_host_state.read_vm_port_stats(world_id)
+                    self.assertIsInstance(port_stats, list, "read_vm_port_stats should be a dict")
+                    if port_stats:
+                        stats = port_stats[0]
+                        self.assertEqual(stats['PortID'], world_id, f"PortID should be {world_id}")
+                        self.assertIn('Transmitpacketsdropped', stats,
+                                      "'Transmitpacketsdropped' should be a key in the stats")
+                        self.assertIsInstance(stats['Transmitpacketsdropped'], int,
+                                              "'Transmitpacketsdropped' should be an int")
+                        self.assertIn('Receivepacketsdropped', stats,
+                                      "'Receivepacketsdropped' should be a key in the stats")
+                        self.assertIsInstance(stats['Receivepacketsdropped'], int,
+                                              "'Receivepacketsdropped' should be an int")
+                    else:
+                        self.fail("No port stats returned")
+
+    def test_can_read_vnic_vm_port_stats(self):
+        """Tests first world id based  VM Name and adapter name
+        and fetch stats """
+        with EsxiState.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            vm_names = self.sample_vm_names()
+            args_dict = {vm_name: self.test_default_adapter_name for vm_name in vm_names}
+            world_id_map = esxi_host_state.filtered_map_vm_hosts_port_ids(
+                vm_names,
+                args_dict,
+                is_sriov=False
+            )
+            for vm_name in vm_names:
+                self.assertIn(vm_name, world_id_map, f"{vm_name} should be a key in the result")
+                world_ids = world_id_map[vm_name]['port_ids']
+                for world_id in world_ids:
+                    port_stats = esxi_host_state.read_vm_port_stats(world_id)
+                    self.assertIsInstance(port_stats, list, "read_vm_port_stats should be a dict")
+                    if port_stats:
+                        stats = port_stats[0]
+                        self.assertEqual(stats['PortID'], world_id, f"PortID should be {world_id}")
+                        self.assertIn('Transmitpacketsdropped', stats, "'Transmitpacketsdropped' should be a key in the stats")
+                        self.assertIsInstance(stats['Transmitpacketsdropped'], int, "'Transmitpacketsdropped' should be an int")
+                        self.assertIn('Receivepacketsdropped', stats, "'Receivepacketsdropped' should be a key in the stats")
+                        self.assertIsInstance(stats['Receivepacketsdropped'], int, "'Receivepacketsdropped' should be an int")
+                    else:
+                        self.fail("No port stats returned")
+
