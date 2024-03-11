@@ -2,6 +2,8 @@ import json
 import os
 import random
 
+import numpy as np
+
 from tests.extended_test_case import ExtendedTestCase
 from tests.test_utils import (
     generate_sample_adapter_list_xml,
@@ -100,8 +102,6 @@ class TestsEsxiMetric(ExtendedTestCase):
             _data = esxi_collector.map_vm_hosts_port_ids(test_vm_names)
             self.assertIsInstance(_data, dict, "vm_port_ids_map should return a dictionary")
 
-            print(_data)
-
             for vm_name in test_vm_names:
                 self.assertIn(vm_name, _data, f"{vm_name} should be a key in the result")
                 self.assertIn('port_ids', _data[vm_name], "'port_ids' should be a key in each VM's data")
@@ -134,7 +134,35 @@ class TestsEsxiMetric(ExtendedTestCase):
             self.assertEqual(len(esxi_collector.esxi_state_reader), len(self.esxi_fqdns))
 
             args_dict = {vm_name: self.test_default_adapter_name for vm_name in vm_names}
-            esxi_collector.collect_vm_port_metrics(vm_names, args_dict)
+            stats_data = esxi_collector.collect_vm_port_metrics(vm_names, args_dict)
+            print(stats_data)
+
+        finally:
+            for esxi_state in esxi_states:
+                esxi_state.release()
+                self.assertFalse(esxi_state.is_active(), f"{esxi_state.fqdn} should not be active after release")
+
+    def test_collect_vm_port_metrics_n_samples(self):
+        """Tests constructors"""
+        esxi_states = []
+        try:
+            for esxi_fqdn in self.esxi_fqdns:
+                esxi_states.append(EsxiState.from_optional_credentials(
+                    esxi_fqdn=esxi_fqdn,
+                    username=self.username,
+                    password=self.password
+                ))
+
+            esxi_collector = EsxiMetricCollector(esxi_states)
+            vm_names = self.sample_vm_names()
+            self.assertIsInstance(vm_names, list, "test_vm_names should return a list")
+            self.assertTrue(len(vm_names) > 0, "test_vm_names should not be empty")
+            self.assertEqual(len(esxi_collector.esxi_state_reader), len(self.esxi_fqdns))
+
+            args_dict = {vm_name: self.test_default_adapter_name for vm_name in vm_names}
+            stats_data = esxi_collector.collect_vm_port_metrics(vm_names, args_dict, num_sample=2)
+            np.set_printoptions(linewidth=160)
+            print(stats_data)
 
         finally:
             for esxi_state in esxi_states:

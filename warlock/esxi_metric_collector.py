@@ -1,5 +1,9 @@
 import json
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Tuple, Any, Optional
+import time
+import numpy as np
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from warlock.esxi_state import EsxiState
 
 
@@ -112,54 +116,76 @@ class EsxiMetricCollector:
         return None
 
     @staticmethod
-    def analyze_pps_and_drops(data):
+    def vectorize_data(data, vm_index):
+        temp_data = []
         for stat in data['stats']:
             for port in stat['ports']:
-                name = port['name']
-                txpps = port.get('txpps', 0)
-                rxpps = port.get('rxpps', 0)
-                txdrops = port.get('txdisc', 0)
+                temp_data.append((
+                    vm_index,
+                    port.get('id', 0),
+                    port.get('txpps', 0),
+                    port.get('rxpps', 0),
+                    port.get('txdisc', 0),
+                    port.get('dropsByBurstQ', 0),
+                    port.get('droppedbyQueuing', 0),
+                    port.get('intr', {}).get('count', 0)
+                ))
+        return np.array(temp_data)
 
-                drop_by_burst_q = port.get('dropsByBurstQ', 0)
-                drop_by_q = port.get('droppedbyQueuing', 0)
-                interrupts = port.get('intr', {}).get('count', 0)
-
-                print(f"Port: {name}, TX PPS: {txpps}, RX PPS: {rxpps}, TX Drops: {txdrops}, "
-                      f"Drops by Burst Q: {drop_by_burst_q}, Drops by Queuing: {drop_by_q}, "
-                      f"Interrupts: {interrupts}")
+    def fetch_and_vectorize_data(
+            self,
+            esxi_state,
+            vm_data,
+            vm_index,
+            is_sriov: bool = False
+    ):
+        filtered_adapter_names = [
+            nic_name for nic_name in vm_data['port_vm_nic_name']
+            if ("SRIOV" not in nic_name) or (is_sriov and "SRIOV" in nic_name)
+        ]
+        filtered_adapter_name = filtered_adapter_names[0]
+        stats = esxi_state.read_vm_net_stats(filtered_adapter_name)
+        return self.vectorize_data(stats, vm_index)
 
     def collect_vm_port_metrics(
             self,
             vm_names: List[str],
             vmnic_name: Dict[str, str],
-            is_sriov: bool = False
-    ):
+            is_sriov: bool = False,
+            num_sample: int = 1,
+            interval: int = 10
+    ) -> np.ndarray:
         """
-        Collects VM port metrics filtered by VM NIC names
-        and optionally filters out SRIOV NIC names.
-        Note net-stat ESXi for same eth0 might return two names
-
-        ['vm_name.eth0', 'SRIOVvm_name.eth0']
-
-        if caller need vnic is_sriov must false otherwise if true method will collect
-        stats for VF
-
+        Collects and returns the vectorized data for the given VMs.
         """
-        if not all(vm_name in vmnic_name for vm_name in vm_names) or not all(
-                key in vm_names for key in vmnic_name.keys()):
-            raise ValueError("vmnic_name must contain the same keys as the list of VM names provided.")
-
         vm_to_port_ids = self.filtered_map_vm_hosts_port_ids(vm_names, vmnic_name)
-        for vm_name, vm_data in vm_to_port_ids.items():
-            esxi_state = self.get_esxi_state(vm_data['esxi_host'])
-            if esxi_state:
-                # Filter NIC names based on is_sriov flag
-                filtered_adapter_names = [nic_name for nic_name in vm_data['port_vm_nic_name']
-                                          if ("SRIOV" not in nic_name) or (is_sriov and "SRIOV" in nic_name)]
-                filtered_adapter_name = filtered_adapter_names[0]
-                stats = esxi_state.read_vm_net_stats(filtered_adapter_name)
-                print(json.dumps(stats, indent=4))
+        indices_map = {vm_name: index for index, vm_name in enumerate(vm_names)}
 
-        return {}
+        all_vectorized_data = []
 
+        with ThreadPoolExecutor(max_workers=len(vm_names)) as executor:
+            futures = []
+            for _ in range(num_sample):
+                for vm_name, vm_data in vm_to_port_ids.items():
+                    esxi_state = self.get_esxi_state(vm_data['esxi_host'])
+                    if esxi_state:
+                        futures.append(
+                            executor.submit(
+                                self.fetch_and_vectorize_data,
+                                esxi_state,
+                                vm_data,
+                                indices_map[vm_name],
+                                is_sriov
+                            )
+                        )
 
+                for future in as_completed(futures):
+                    all_vectorized_data.append(future.result())
+
+                if _ < num_sample - 1:
+                    time.sleep(interval)
+
+        if all_vectorized_data:
+            return np.concatenate(all_vectorized_data)
+
+        return np.array([])
