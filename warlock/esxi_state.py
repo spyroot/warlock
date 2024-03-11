@@ -32,6 +32,9 @@ class InvalidESXiHostException(Exception):
 
 
 class EsxiState:
+    INTERRUPT_INTERVAL_RANGE = 4095
+    MAX_VMDQ = 16
+
     def __init__(
             self,
             ssh_operator: SSHOperator,
@@ -519,6 +522,7 @@ class EsxiState:
         :param rx_int: ring rx size
         :return: a boolean indicating whether the tx and rx ring size were updated
         """
+
         def is_power_of_two(n):
             return n != 0 and (n & (n - 1)) == 0
 
@@ -630,6 +634,7 @@ class EsxiState:
         """
         Converts XML data to JSON, handling nested structures and lists.
         """
+
         def parse_element(element):
             """
             Recursively parses XML elements to build a Python dict.
@@ -734,9 +739,10 @@ class EsxiState:
         return exit_code == 0
 
     def update_module_param(
-            self, module_name:
-            str, param_name:
-            str, param_value: str
+            self,
+            module_name: str,
+            param_name: str,
+            param_value: str
     ) -> bool:
         """
         Update a specific parameter for a given kernel module.
@@ -754,7 +760,7 @@ class EsxiState:
         if param_name not in param_names:
             raise ValueError(f"Parameter '{param_name}' not available for module {module_name}.")
 
-        cmd = f"esxcli system module parameters set -m {module_name} -p {param_name}={param_value}"
+        cmd = f"esxcli system module parameters set -m {module_name} -a -p {param_name}={param_value}"
         _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
 
         if exit_code != 0:
@@ -791,9 +797,11 @@ class EsxiState:
             raise ValueError(f"num_qps ({num_qps}) must be one of {valid_values}.")
 
         num_qps_str = ",".join([str(num_qps) for _ in nic_list])
-        return self.update_module_param(module_name=module_name,
-                                        param_name="NumQPsPerVF",
-                                        param_value=str(num_qps_str))
+        return (self.update_module_param
+                (module_name=module_name,
+                 param_name="NumQPsPerVF",
+                 param_value=str(num_qps_str))
+                )
 
     def update_max_vfs(
             self,
@@ -801,21 +809,25 @@ class EsxiState:
             max_vfs: int
     ) -> bool:
         """
-        Update max vfs  parameter for a specified kernel module for all adapter.
+        Update max vfs parameter for a specified kernel module
+        (icen, i40en etc.) for all adapter.
 
         :param module_name: The kernel module name.
         :param max_vfs: The number of max vf  [8, 16, 32, etc].
-        :return: A boolean indicating whether the NumQPsPerVF parameter was successfully updated.
+        :return: A boolean indicating whether the max_vfs parameter was successfully updated.
         """
         nic_list = self.read_adapters_by_driver(module_name)
-        num_qps_str = ",".join([str(max_vfs) for _ in nic_list])
-        return self.update_module_param(module_name=module_name,
-                                        param_name="max_vfs",
-                                        param_value=str(num_qps_str))
+        max_vfs_str = ",".join([str(max_vfs) for _ in nic_list])
+        return self.update_module_param(
+            module_name=module_name,
+            param_name="max_vfs",
+            param_value=str(max_vfs_str)
+        )
 
     def update_rss(self, module_name: str, enable: bool) -> bool:
         """
-        Update the RSS (Receive-Side Scaling) parameter for a specified kernel module for all adapters.
+        Update the RSS (Receive-Side Scaling) parameter for a specified
+        kernel module (ice, i40en etc.) for all adapters.
 
         :param module_name: The kernel module name.
         :param enable: A boolean indicating whether to enable (True) or disable (False) RSS.
@@ -823,9 +835,11 @@ class EsxiState:
         """
         nic_list = self.read_adapters_by_driver(module_name)
         rss_value_str = ",".join([str(int(enable)) for _ in nic_list])
-        return self.update_module_param(module_name=module_name,
-                                        param_name="RSS",
-                                        param_value=rss_value_str)
+        return self.update_module_param(
+            module_name=module_name,
+            param_name="RSS",
+            param_value=rss_value_str
+        )
 
     def update_rx_itr(self, module_name: str, rx_itr: int) -> bool:
         """
@@ -835,10 +849,14 @@ class EsxiState:
         :param rx_itr: The RX interrupt interval in microseconds. Must be in the range [0, 4095].
         :return: A boolean indicating whether the parameter was successfully updated.
         """
-        if not (0 <= rx_itr <= 4095):
+        if not (0 <= rx_itr <= self.INTERRUPT_INTERVAL_RANGE):
             raise ValueError("rx_itr must be between 0 and 4095.")
 
-        return self.update_module_param(module_name=module_name, param_name="RxITR", param_value=str(rx_itr))
+        return self.update_module_param(
+            module_name=module_name,
+            param_name="RxITR",
+            param_value=str(rx_itr)
+        )
 
     def update_tx_itr(self, module_name: str, tx_itr: int) -> bool:
         """
@@ -848,12 +866,19 @@ class EsxiState:
         :param tx_itr: The TX interrupt interval in microseconds. Must be in the range [0, 4095].
         :return: A boolean indicating whether the parameter was successfully updated.
         """
-        if not (0 <= tx_itr <= 4095):
+        if not (0 <= tx_itr <= self.INTERRUPT_INTERVAL_RANGE):
             raise ValueError("tx_itr must be between 0 and 4095.")
 
-        return self.update_module_param(module_name=module_name, param_name="TxITR", param_value=str(tx_itr))
+        return self.update_module_param(
+            module_name=module_name,
+            param_name="TxITR",
+            param_value=str(tx_itr)
+        )
 
-    def update_vmdq(self, module_name: str, vmdq: int) -> bool:
+    def update_vmdq(
+            self, module_name: str,
+            vmdq: int
+    ) -> bool:
         """
         Update the VMDQ (Virtual Machine Device Queues) parameter for a specified kernel module.
 
@@ -861,9 +886,8 @@ class EsxiState:
         :param vmdq: The number of Virtual Machine Device Queues. Must be one of [0, 1, 2, ..., 16].
         :return: A boolean indicating whether the parameter was successfully updated.
         """
-        valid_values = list(range(17))  # 0 to 16 inclusive
-        if vmdq not in valid_values:
-            raise ValueError("vmdq must be one of " + ", ".join(map(str, valid_values)))
+        if not (0 <= vmdq <= self.MAX_VMDQ):
+            raise ValueError(f"vmdq must be between 0 and {self.MAX_VMDQ}.")
 
         nic_list = self.read_adapters_by_driver(module_name)
         vmdq_str = ",".join([str(vmdq) for _ in nic_list])
