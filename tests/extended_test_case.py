@@ -11,6 +11,7 @@ import subprocess
 import time
 import unittest
 import requests
+from parameterized import parameterized
 
 
 class ExtendedTestCase(unittest.TestCase):

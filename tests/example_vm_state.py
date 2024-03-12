@@ -76,6 +76,7 @@ def example_vms_sriov_nics(vm_name="vf-test-np1"):
     print(pci_info)
 
 
+
 def example_vms_state():
     """
     :return:

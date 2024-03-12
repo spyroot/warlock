@@ -9,8 +9,55 @@ conda install pytorch torchvision -c pytorch
 pip install pyvmomi paramiko pyyaml
 ```
 
-THe 
+## API
 
+## EsxiStateReader Class
+
+The `EsxiStateReader` class is designed to encapsulate reading ESXi state information. 
+It provides methods for retrieving various metrics and data directly 
+from an ESXi host via SSH.
+
+## Constructor
+
+### `__init__(ssh_operator: SSHOperator, fqdn: str, username: str, password: str)`
+
+Creates an instance of the `EsxiStateReader` class.
+
+- `ssh_operator`: An instance of the SSHOperator class used for SSH communication.
+- `fqdn`: The fully qualified domain name (FQDN) or IP address of the ESXi host.
+- `username`: The username for authenticating with the ESXi host.
+- `password`: The password for authenticating with the ESXi host.
+
+## Methods
+
+### `is_active() -> bool`
+
+Checks if there's an active SSH connection to the ESXi host.
+
+### `read_adapter_names() -> List[str]`
+
+Reads all adapter names from the ESXi host and returns them as a list.
+
+### `read_pf_adapter_names() -> List[str]`
+
+Reads all adapter names that provide SR-IOV PF functionality.
+
+### `read_vfs(pf_adapter_name: str) -> List[Dict[str, Any]]`
+
+Reads and returns a list of all virtual functions (VFs) for a particular parent network adapter (PF).
+
+## Examples
+
+```python
+# Example usage of the EsxiStateReader class
+with EsxiStateReader.from_optional_credentials(
+        esxi_fqdn="esxi.example.com", username="root", password="password") as esxi_reader:
+    adapter_names = esxi_reader.read_adapter_names()
+    print("Adapter Names:", adapter_names)
+    pf_adapter_names = esxi_reader.read_pf_adapter_names()
+    print("SR-IOV PF Adapter Names:", pf_adapter_names)
+```
+ 
 ```json
 {
     "vf-test-np1-h5mtj-9cf8fdcf6xcfln5-k6mdx": {

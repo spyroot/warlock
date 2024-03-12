@@ -17,6 +17,9 @@ Author: Mus
 """
 import os
 from typing import Optional, Dict, List, Any, Union
+
+import numpy as np
+
 from warlock.ssh_operator import SSHOperator
 import xml.etree.ElementTree as ET
 import json
@@ -31,7 +34,7 @@ class InvalidESXiHostException(Exception):
         super().__init__(self.message)
 
 
-class EsxiState:
+class EsxiStateReader:
     INTERRUPT_INTERVAL_RANGE = 4095
     MAX_VMDQ = 16
 
@@ -53,7 +56,8 @@ class EsxiState:
         self.credential_dict = credential_dict
 
         if ssh_operator is None or not isinstance(ssh_operator, SSHOperator):
-            raise ValueError(f"ssh_operator must be an instance of SSHOperator, got {type(ssh_operator)}")
+            raise ValueError(f"ssh_operator must be an instance "
+                             f"of SSHOperator, got {type(ssh_operator)}")
 
         if not isinstance(fqdn, str):
             raise TypeError(f"esxi must be a string, got {type(fqdn)}")
@@ -74,7 +78,14 @@ class EsxiState:
         self.fqdn = fqdn if fqdn is not None else default_vcenter_ip
         self.username = username if username is not None else default_username
         self.password = password if password is not None else default_password
+        # query cache, to reduce round trip time
         self._cache = {}
+        # adapter cache
+        self._adapter_list_cache = None
+        self._vf_list_cache = {}
+
+        # meta data about vector
+        self._pf_stats_metadata = None
 
     def __enter__(self):
         """
@@ -83,18 +94,18 @@ class EsxiState:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        """
-        Ensure all connections are closed when exiting the context.
+        """Ensure all connections are closed when exiting the context.
         """
         if self._ssh_operator is not None:
             self._ssh_operator.close_all_connections()
+            del self._ssh_operator
 
     def release(self):
-        """
-        Explicitly release resources,  closing all SSH connections.
+        """Explicitly release resources,  closing all SSH connections.
         """
         if self._ssh_operator is not None:
             self._ssh_operator.close_all_connections()
+            del self._ssh_operator
 
     @classmethod
     def from_optional_credentials(
@@ -204,14 +215,13 @@ class EsxiState:
     def read_adapter_names(
             self
     ) -> List[str]:
-        """Read all adapter names and return list of names.
+        """Read all adapter VMware names and return as list  of names.
 
         - if failed to read it will return an empty list
           in case of SSH transport issues exception raised.
 
         :return: list of adapter names
         """
-
         if 'adapter_names' in self._cache:
             return self._cache['adapter_names']
 
@@ -230,11 +240,10 @@ class EsxiState:
     def read_pf_adapter_names(
             self
     ) -> List[str]:
-        """Read all adapter that provide sriov pf functionality
+        """Method return all adapter that provide sriov pf functionality.
         :return: list of adapter names
         """
         # esxcli network sriovnic list
-
         if 'pf_adapter_names' in self._cache:
             return self._cache['pf_adapter_names']
 
@@ -245,26 +254,36 @@ class EsxiState:
         _pf_names = []
         pf_names = [n['Name'] for n in nic_list]
         for pf_name in pf_names:
-            data = self.read_network_vf_list(pf_adapter_name=pf_name)
+            data = self.read_vfs(pf_adapter_name=pf_name)
             if data is not None and len(data) > 0:
                 _pf_names.append(pf_name)
 
         self._cache['pf_adapter_names'] = _pf_names
         return _pf_names
 
-    def read_network_vf_list(
+    def read_vfs(
             self,
             pf_adapter_name: str = "vmnic0"
     ) -> List[Dict[str, Any]]:
-        """Method return list of all VF for particular network adapter PF.
+        """Method return list of all VFs for
+        particular parent network adapter (PF).
         :param pf_adapter_name: PF name of the adapter. "vmnic0" etc.
         :return: a list of VF each is dictionary
         """
+        if pf_adapter_name is None:
+            return []
+
+        if pf_adapter_name in self._vf_list_cache:
+            return self._vf_list_cache[pf_adapter_name]
+
         cmd = f"esxcli --formatter=xml network sriovnic vf list -n {pf_adapter_name}"
         _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
         if exit_code == 0 and _data is not None:
-            return json.loads(EsxiState.xml2json(_data))
-        return []
+            self._vf_list_cache[pf_adapter_name] = json.loads(EsxiStateReader.xml2json(_data))
+        else:
+            self._vf_list_cache[pf_adapter_name] = []
+
+        return self._vf_list_cache[pf_adapter_name]
 
     def filtered_map_vm_hosts_port_ids(
             self,
@@ -273,8 +292,10 @@ class EsxiState:
             is_sriov: Optional[bool] = None,
     ):
         """
-        Returns a dictionary mapping VM names to their port IDs, ESXi host, and port VM NIC names filtered
-        by the specified adapter name and SR-IOV flag.
+        Returns a dictionary that maps VM names to their port IDs, ESXi host,
+        and port id where port id are internal id,
+
+        VM NIC names filtered by the specified adapter name and SR-IOV flag.
 
         Once a VM is found on one ESXi host, it's not searched for again on another host.
 
@@ -287,7 +308,7 @@ class EsxiState:
         :return: Dictionary mapping VM names to their details including filtered port VM NIC names.
         """
         vm_to_port_ids = {}
-        vm_port_id_map = self.read_vm_net_port_id()
+        vm_port_id_map = self.read_netstats_vm_net_port_ids()
 
         for vm_name in vm_names:
             target_adapter = vmnic_name.get(vm_name, None)
@@ -317,44 +338,73 @@ class EsxiState:
 
         return vm_to_port_ids
 
-    def read_vm_port_stats(self, world_id):
+    def read_vm_port_stats(
+            self,
+            world_id: Union[int, str]
+    ):
         """
         Retrieve VM port statistics using a given world ID.
         The world_id can be provided as either an integer or a string.
+        :param world_id: an internal port id it should int value
+        :return:
         """
         world_id_str = str(world_id)
         cmd = f"esxcli --formatter=xml network port stats get -p {world_id_str}"
         _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
         if exit_code == 0 and _data is not None:
-            return json.loads(EsxiState.xml2json(_data))
+            return json.loads(EsxiStateReader.xml2json(_data))
         return []
 
-    def read_active_vf_list(
+    def read_active_vfs(
             self,
-            pf_adapter_name: str = "vmnic0"
+            pf_nic_name: str = "vmnic0"
     ) -> List[int]:
         """Reads and returns list of all active VF on a particular PF.
            if SRIOV not enabled and caller provided correct vmnic
            the list is empty.
-        :param pf_adapter_name:  PF name of the adapter. "vmnic0"
+
+        :param pf_nic_name:  PF name of the adapter. "vmnic0"
         :return: list of active VF on a particular adapter
         """
-        vfs = self.read_network_vf_list(pf_adapter_name=pf_adapter_name)
+        if pf_nic_name is None:
+            return []
+        vfs = self.read_vfs(pf_adapter_name=pf_nic_name)
         return [vf_dict['VFID'] for vf_dict in vfs if
-                'Active' in vf_dict and vf_dict['Active'] == 'true' and 'VFID' in vf_dict]
+                'Active' in vf_dict and vf_dict['Active'] and 'VFID' in vf_dict]
+
+    def pf_stats_metadata(self):
+        """Returns metadata for the network adapter stats."""
+        return self._pf_stats_metadata
 
     def read_pf_stats(
             self,
-            adapter_name: str = "vmnic0"
+            adapter_name: str = "vmnic0",
+            return_as_vector: bool = False
     ):
-        """Read network adapter stats
-        :param adapter_name:  Name of the adapter. "vmnic0" etc
-        :return:
+        """Read network adapter stats, if adapter name invalid
+        returns empty list.
+
+        if return_as_vector is True method return (1, 23) vector
+        where each col mapped to stats metric data.
+
+        :param adapter_name:  Name of the adapter. "vmnic0" etc.
+        :param return_as_vector: If True, returns a numpy vector for all integer values.
+        :return: a list of key pair stats or a numpy vector if return_numpy_vector is True.
         """
+        if adapter_name is None:
+            return []
+
         cmd = f"esxcli --formatter=xml network nic stats get -n {adapter_name}"
         _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
         if exit_code == 0 and _data is not None:
-            return json.loads(EsxiState.xml2json(_data))
+            stats_dict = json.loads(EsxiStateReader.xml2json(_data))
+            if return_as_vector and len(stats_dict) == 1:
+                d = stats_dict[0]
+                self._pf_stats_metadata = [key for key, value in d.items() if isinstance(value, int)]
+                nd = np.array([value for key, value in d.items() if isinstance(value, int)])
+                return nd.reshape(1, -1)
+            else:
+                return stats_dict
         return []
 
     def read_vf_stats(
@@ -372,13 +422,20 @@ class EsxiState:
         cmd = f"esxcli --formatter=xml network sriovnic vf stats -n {adapter_name} -v {vf_id_str}"
         _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
         if exit_code == 0 and _data is not None:
-            return json.loads(EsxiState.xml2json(_data))
+            return json.loads(EsxiStateReader.xml2json(_data))
         return []
 
-    def read_adapter_list(self):
-        """Read network adapter list.
+    def read_adapter_list(self) -> List[str]:
+        """Read network adapter list and return list that hold a dicts
 
-         Data
+        Example:
+        >>> with EsxiStateReader(ssh_operator, fqdn, username, password) as reader:
+        >>>     adapter_list = reader.read_adapter_list()
+        >>>     print(adapter_list)
+
+        [{'AdminStatus': 'Up', 'DPUId': 'N/A', 'Description': 'Intel(R) Ethernet Controller X550', ...}, {...}]
+
+          Data
 
             [
               {
@@ -399,11 +456,17 @@ class EsxiState:
 
         :return: a list of dictionaries containing all adapters
         """
+        if self._adapter_list_cache is not None:
+            return self._adapter_list_cache
+
         _data, exit_code, _ = self._ssh_operator.run(
             self.fqdn, "esxcli --formatter=xml network nic list")
         if exit_code == 0 and _data is not None:
-            return json.loads(EsxiState.xml2json(_data))
-        return []
+            self._adapter_list_cache = json.loads(EsxiStateReader.xml2json(_data))
+        else:
+            self._adapter_list_cache = []
+
+        return self._adapter_list_cache
 
     def read_vm_process_list(
             self
@@ -415,7 +478,7 @@ class EsxiState:
         _data, exit_code, _ = self._ssh_operator.run(
             self.fqdn, "esxcli --formatter=xml vm process list")
         if exit_code == 0 and _data is not None:
-            return json.loads(EsxiState.xml2json(_data))
+            return json.loads(EsxiStateReader.xml2json(_data))
         return []
 
     def read_dvs_list(
@@ -428,7 +491,7 @@ class EsxiState:
         _data, exit_code, _ = self._ssh_operator.run(
             self.fqdn, "esxcli --formatter=xml network vswitch dvs vmware list")
         if exit_code == 0 and _data is not None:
-            return json.loads(EsxiState.xml2json(_data))
+            return json.loads(EsxiStateReader.xml2json(_data))
         return []
 
     def read_standard_switch_list(
@@ -441,10 +504,10 @@ class EsxiState:
         _data, exit_code, _ = self._ssh_operator.run(
             self.fqdn, "esxcli --formatter=xml network vswitch standard list")
         if exit_code == 0 and _data is not None:
-            return json.loads(EsxiState.xml2json(_data))
+            return json.loads(EsxiStateReader.xml2json(_data))
         return []
 
-    def read_all_net_stats(
+    def read_netstats_all(
             self,
             is_abs: Optional[bool] = False
     ) -> Dict[Any, Any]:
@@ -457,10 +520,11 @@ class EsxiState:
             return json.loads(_data)
         return {}
 
-    def read_vm_net_port_id(
+    def read_netstats_vm_net_port_ids(
             self
     ) -> Dict[int, str]:
         """Return dictionary of port id to vm name in context net-stats vm name
+        :return:
         """
 
         def is_number(s):
@@ -479,31 +543,32 @@ class EsxiState:
             return port_to_vm_name
         return {}
 
-    def read_vm_net_stats(
+    def read_netstats_by_vm(
             self,
             vm_name: str,
             is_abs: Optional[bool] = False
     ):
-        """
-        Reads vm net statistics from net-stats.
+        """Reads vm net statistics from net-stats.
+
         :param vm_name: is vm name accepted by net-stats i.e. SRIOVmy_vm_name.eth7
         :param is_abs:  if value caller need absolute values
         :return:  dictionary that hold all statistics.
         """
         _data, exit_code, _ = self._ssh_operator.run(
             self.fqdn, f"net-stats -V {vm_name}" if is_abs else f"net-stats -a -V {vm_name}")
-        print(f"net-stats -V {vm_name}" if is_abs else f"net-stats -a -V {vm_name}")
         if exit_code == 0 and _data is not None:
             return json.loads(_data)
         return {}
 
-    def read_port_net_stats(
+    def read_netstats_by_nic(
             self,
             nic: str = "vmnic0",
             is_abs: Optional[bool] = False,
     ):
-        """
-        Retrieves network stats for a specified port.
+        """Retrieves network stats for a specified port.
+        :param nic:  name of network interface
+        :param is_abs:  if value caller need absolute values
+        :return:
         """
         _data, exit_code, _ = self._ssh_operator.run(
             self.fqdn, f"net-stats -N {nic}" if is_abs else f"net-stats -a -N {nic}")
@@ -530,7 +595,7 @@ class EsxiState:
             nic: str = "vmnic0"
     ) -> List[str]:
         """Lists hardware capabilities of a specified network adapter.
-        :param nic:
+        :param nic: vmnic name that we fetch capability
         :return:
         """
         _data, exit_code, _ = self._ssh_operator.run(
@@ -546,11 +611,10 @@ class EsxiState:
             nic: str = "vmnic0",
             capability: Optional[str] = "CAP_SRIOV"
     ) -> bool:
-        """
-        Return bool if a specific hardware capability enabled or not
+        """Return bool if a specific hardware capability enabled.
         :param nic: a string representing the name of the adapter
         :param capability: a string representing the capability CAP_SRIOV etc.
-        :return:
+        :return: True if the enabled capability
         """
         _data, exit_code, _ = self._ssh_operator.run(
             self.fqdn, f"vsish -e get /net/sriov/{nic}/hwCapabilities/{capability}")
@@ -561,8 +625,7 @@ class EsxiState:
 
     @staticmethod
     def _convert_to_dict(data):
-        """
-        Converts the vsish output to python dict.
+        """Converts the vsish output to python dict.
         """
 
         def convert_value(value):
@@ -632,30 +695,35 @@ class EsxiState:
     def read_module_parameters(
             self,
             module_name: str = "icen"
-    ):
+    ) -> List[Any]:
         """Read kernel module parameters for a given module.
-
         :param module_name:  Name of the module. "icen", "en40"
         :return: a list that hold dictionary of parameters driver current uses.
         """
+        if module_name is None:
+            return []
+
         _data, exit_code, _ = self._ssh_operator.run(
             self.fqdn, f"esxcli --formatter=xml system module parameters list -m {module_name}")
         if exit_code == 0 and _data is not None:
-            return json.loads(EsxiState.xml2json(_data))
+            return json.loads(EsxiStateReader.xml2json(_data))
         return []
 
-    def read_adapter_driver(
+    def read_adapter_driver_name(
             self,
             nic: str = "vmnic0",
-    ):
-        """Read network adapter and return driver name
+    ) -> Union[None, str]:
+        """Read network adapter and return driver name.
         :param nic:  vmnic0
-        :return: driver name
+        :return: nic driver name as string
         """
+        if nic is None or len(nic) == 0:
+            return None
+
         cmd = f"esxcli --formatter=xml network nic get -n {nic}"
         _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
         if exit_code == 0 and _data is not None:
-            data = json.loads(EsxiState.complex_xml2json(_data))
+            data = json.loads(EsxiStateReader.complex_xml2json(_data))
             if isinstance(data, list) and len(data) > 0:
                 driver_info = data[0].get('DriverInfo')
                 if driver_info:
@@ -673,7 +741,7 @@ class EsxiState:
         :param nic:
         :return:
         """
-        module_name = self.read_adapter_driver(nic=nic)
+        module_name = self.read_adapter_driver_name(nic=nic)
         if module_name is not None:
             return self.read_module_parameters(module_name=module_name)
         return []
@@ -683,18 +751,27 @@ class EsxiState:
             nic: str = "vmnic0"
     ) -> List[Dict[str, Any]]:
         """
-        Reads adapter parameters and return a list of all parameters.
+        Reads kernel module parameters and return a list of all parameters.
 
-        For example
+        Example:
+
+        >>> with EsxiStateReader(ssh_operator, credential_dict, fqdn, username, password)
+        >>>     vf_stats = reader.read_available_mod_parameters(adapter_name="vmnic0")
+        >>>     print(vf_stats)
+
+        small example
+
         [
-        'DRSS', 'DevRSS', 'QPair', 'RSS', 'RxDesc', 'RxITR',
-        'TxDesc', 'TxITR', 'VMDQ', 'max_vfs'
+             'DRSS',
+             'DevRSS',
+             'QPair',
+             'RSS'
         ]
 
         :param nic: a string representing the name of the network adapter/
         :return: a list of parameters
         """
-        module_name = self.read_adapter_driver(nic=nic)
+        module_name = self.read_adapter_driver_name(nic=nic)
         if module_name is not None:
             module_params = self.read_module_parameters(module_name=module_name)
             if len(module_params) > 0:
@@ -704,23 +781,22 @@ class EsxiState:
     def __enable_sriov(
             self,
             nic: str,
+            module: str,
             num_vfs: int
     ) -> bool:
-        """
-        Enable SR-IOV on a specified network adapter with a given number of Virtual Functions (VFs).
+        """Enable SR-IOV on a specified network adapter with a given number
+        of Virtual Functions (VFs).
+
         :param nic: A string representing the NIC (e.g., vmnic0).
         :param num_vfs: The number of Virtual Functions to enable for the NIC.
         :return: A boolean indicating whether SR-IOV was enabled successfully.
         """
-        # Validate num_vfs is a positive integer
         if not isinstance(num_vfs, int) or num_vfs <= 0:
             raise ValueError(f"num_vfs ({num_vfs}) must be a positive integer.")
 
-        # esxcli system module parameters set -m ixgbe -p max_vfs=0,10,10,10
-        enable_sriov_cmd = "esxcli system module parameters set -m ixgbe -p max_vfs=0,10,10,10"
+        enable_sriov_cmd = "esxcli system module parameters set -m {module} -p max_vfs={num_vfs},{num_vfs},{num_vfs},{num_vfs}"
         _data, exit_code, _ = self._ssh_operator.run(self.fqdn, enable_sriov_cmd)
 
-        # esxcli system module parameters list -m icen
         return exit_code == 0
 
     @staticmethod
@@ -815,8 +891,8 @@ class EsxiState:
             self,
             module_name: str = "icen"
     ) -> bool:
-        """Update PF trusted state. ( Note not all module support that)
-        :param module_name: a kernel module name
+        """Update PF trusted state. (Note not all driver/module support that)
+        :param module_name: network adapter driver kernel module name
         :return: a boolean indicating whether the tx and rx ring size were updated
         """
         module_params = self.read_module_parameters(module_name=module_name)
@@ -862,9 +938,12 @@ class EsxiState:
 
         return True
 
-    def read_adapters_by_driver(self, driver_name: str) -> List[str]:
+    def read_adapters_by_driver(
+            self,
+            driver_name: str
+    ) -> List[str]:
         """
-        Reads all adapter names using the specified driver from the previously fetched adapter list.
+        Return a list of all adapter names that using particular driver.
 
         :param driver_name: The name of the driver to filter adapters by.
         :return: A list of adapter names that use the specified driver. Returns an empty list if none found.
@@ -879,7 +958,7 @@ class EsxiState:
             num_qps: int
     ) -> bool:
         """
-        Update the NumQPsPerVF parameter for a specified kernel module.
+        Update the NumQPsPerVF parameter for an intel  kernel module.
 
         :param module_name: The kernel module name.
         :param num_qps: The number of queue pairs to be allocated for each VF. Must be one of [1, 2, 4, 8, 16].
@@ -907,7 +986,7 @@ class EsxiState:
         (icen, i40en etc.) for all adapter.
 
         :param module_name: The kernel module name.
-        :param max_vfs: The number of max vf  [8, 16, 32, etc].
+        :param max_vfs: The number of max vf  [8, 16, 32, etc.].
         :return: A boolean indicating whether the max_vfs parameter was successfully updated.
         """
         nic_list = self.read_adapters_by_driver(module_name)
@@ -918,7 +997,10 @@ class EsxiState:
             param_value=str(max_vfs_str)
         )
 
-    def update_rss(self, module_name: str, enable: bool) -> bool:
+    def update_rss(
+            self, module_name: str,
+            enable: bool
+    ) -> bool:
         """
         Update the RSS (Receive-Side Scaling) parameter for a specified
         kernel module (ice, i40en etc.) for all adapters.
@@ -935,7 +1017,10 @@ class EsxiState:
             param_value=rss_value_str
         )
 
-    def update_rx_itr(self, module_name: str, rx_itr: int) -> bool:
+    def update_rx_itr(
+            self, module_name: str,
+            rx_itr: int
+    ) -> bool:
         """
         Update the default RX interrupt interval parameter for a specified kernel module.
 
@@ -953,13 +1038,13 @@ class EsxiState:
         )
 
     def update_tx_itr(
-            self, module_name:
-            str, tx_itr: int
+            self,
+            module_name: str,
+            tx_itr: int
     ) -> bool:
-        """
-        Update the default TX interrupt interval parameter for a specified kernel module.
+        """ Update the default TX interrupt interval parameter for a specified kernel module.
 
-        :param module_name: The kernel module name.
+        :param module_name:  The kernel module name.
         :param tx_itr: The TX interrupt interval in microseconds. Must be in the range [0, 4095].
         :return:  A boolean indicating whether the parameter was successfully updated.
         """
@@ -977,7 +1062,10 @@ class EsxiState:
             vmdq: int
     ) -> bool:
         """
-        Update the VMDQ (Virtual Machine Device Queues) parameter for a specified kernel module.
+        Update the VMDQ (Virtual Machine Device Queues) parameter
+        for a specified kernel module.
+
+        [2, 4, 8, 16, 32]
 
         :param module_name: The kernel module name.
         :param vmdq: The number of Virtual Machine Device Queues. Must be one of [0, 1, 2, ..., 16].

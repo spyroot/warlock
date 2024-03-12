@@ -13,7 +13,7 @@ from tests.test_utils import (
     sample_vm_stats
 )
 from warlock.esxi_metric_collector import EsxiMetricCollector
-from warlock.esxi_state import EsxiState
+from warlock.esxi_state import EsxiStateReader
 from warlock.ssh_operator import SSHOperator
 
 
@@ -36,7 +36,7 @@ class TestsEsxiMetric(ExtendedTestCase):
         esxi_states = []
         try:
             for esxi_fqdn in self.esxi_fqdns:
-                esxi_states.append(EsxiState.from_optional_credentials(
+                esxi_states.append(EsxiStateReader.from_optional_credentials(
                     esxi_fqdn=esxi_fqdn,
                     username=self.username,
                     password=self.password
@@ -58,7 +58,7 @@ class TestsEsxiMetric(ExtendedTestCase):
         esxi_states = []
         try:
             for esxi_fqdn in self.esxi_fqdns:
-                esxi_states.append(EsxiState.from_optional_credentials(
+                esxi_states.append(EsxiStateReader.from_optional_credentials(
                     esxi_fqdn=esxi_fqdn,
                     username=self.username,
                     password=self.password
@@ -84,7 +84,7 @@ class TestsEsxiMetric(ExtendedTestCase):
         esxi_states = []
         try:
             for esxi_fqdn in self.esxi_fqdns:
-                esxi_states.append(EsxiState.from_optional_credentials(
+                esxi_states.append(EsxiStateReader.from_optional_credentials(
                     esxi_fqdn=esxi_fqdn,
                     username=self.username,
                     password=self.password
@@ -123,7 +123,7 @@ class TestsEsxiMetric(ExtendedTestCase):
         esxi_states = []
         try:
             for esxi_fqdn in self.esxi_fqdns:
-                esxi_states.append(EsxiState.from_optional_credentials(
+                esxi_states.append(EsxiStateReader.from_optional_credentials(
                     esxi_fqdn=esxi_fqdn,
                     username=self.username,
                     password=self.password
@@ -162,7 +162,7 @@ class TestsEsxiMetric(ExtendedTestCase):
         esxi_states = []
         try:
             for esxi_fqdn in self.esxi_fqdns:
-                esxi_states.append(EsxiState.from_optional_credentials(
+                esxi_states.append(EsxiStateReader.from_optional_credentials(
                     esxi_fqdn=esxi_fqdn,
                     username=self.username,
                     password=self.password

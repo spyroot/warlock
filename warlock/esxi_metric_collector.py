@@ -12,14 +12,14 @@ import time
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from warlock.esxi_state import EsxiState
+from warlock.esxi_state import EsxiStateReader
 
 
 class EsxiMetricCollector:
 
     def __init__(
             self,
-            esxi_states: List[EsxiState],
+            esxi_states: List[EsxiStateReader],
     ):
         self.esxi_state_reader = esxi_states
 
@@ -50,7 +50,7 @@ class EsxiMetricCollector:
             if not remaining_vm_names:
                 break
 
-            vm_port_id_map = esxi_state.read_vm_net_port_id()
+            vm_port_id_map = esxi_state.read_netstats_vm_net_port_ids()
             found_vm_names = []
             for vm_name in remaining_vm_names:
                 port_ids = [port_id for port_id, port_vm_name in vm_port_id_map.items()
@@ -96,7 +96,7 @@ class EsxiMetricCollector:
             if not remaining_vm_names:
                 break
 
-            vm_port_id_map = esxi_state.read_vm_net_port_id()
+            vm_port_id_map = esxi_state.read_netstats_vm_net_port_ids()
             found_vm_names = []
             for vm_name in remaining_vm_names:
                 target_adapter = vmnic_name.get(vm_name, None)
@@ -125,7 +125,7 @@ class EsxiMetricCollector:
     def get_esxi_state(
             self,
             esxi_fqdn: str
-    ) -> Union[None, EsxiState]:
+    ) -> Union[None, EsxiStateReader]:
         """Returns the EsxiState object for the given ESXi host (FQDN or IP).
         :param esxi_fqdn: IP or hostname address of the ESXi
         :return:  EsxiState object
@@ -172,7 +172,7 @@ class EsxiMetricCollector:
             if ("SRIOV" not in nic_name) or (is_sriov and "SRIOV" in nic_name)
         ]
         filtered_adapter_name = filtered_adapter_names[0]
-        stats = esxi_state.read_vm_net_stats(filtered_adapter_name)
+        stats = esxi_state.read_netstats_by_vm(filtered_adapter_name)
         return self.vectorize_data(stats, vm_index)
 
     def collect_vm_port_metrics(
