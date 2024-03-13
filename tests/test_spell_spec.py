@@ -3,10 +3,13 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Union
+from typing import Union, Optional
+
+import yaml
 
 from tests.extended_test_case import ExtendedTestCase
-from warlock.spell_specs import SpellSpecs
+from tests.test_utils import remove_key_from_pod_spec
+from warlock.spell_specs import SpellSpecs, InvalidSpellSpec, InvalidPodSpec
 
 
 class TestSpellFileReader(ExtendedTestCase):
@@ -15,36 +18,56 @@ class TestSpellFileReader(ExtendedTestCase):
             self,
             file_path: Union[str, Path],
             key: str,
-            new_value: any
+            new_value: any,
+            sub_key: Optional[str] = None,
     ) -> None:
         """For test routine we need mutate , create incorrect spell spec files.
          Update or remove a specific key in a JSON file, in place.
          If new_value is None, the key is removed from the JSON structure.
          Otherwise, the key is updated with the new value.
 
+        :param sub_key:  we don't do full recurse search ,so it second layer in json key.
         :param file_path: Path to the JSON file.
         :param key: The key in the JSON file to update.
         :param new_value: The new value to assign to the key.
         """
         with open(file_path, 'r+') as file:
             spell_data = json.load(file)
-            if new_value is None:
-                spell_data.pop(key, None)
+            if sub_key:
+                if sub_key not in spell_data:
+                    raise ValueError(f"Sub-key '{sub_key}' not found in the file.")
+                nested_data = spell_data[sub_key]
+                if new_value is None:
+                    nested_data.pop(key, None)
+                else:
+                    nested_data[key] = new_value
             else:
-                spell_data[key] = new_value
+                if new_value is None:
+                    spell_data.pop(key, None)
+                else:
+                    spell_data[key] = new_value
+
             file.seek(0)
             json.dump(spell_data, file, indent=4)
             file.truncate()
 
+        # we check that we updated correct value
         with open(file_path, 'r') as file:
             updated_data = json.load(file)
+            if sub_key:
+                if sub_key not in updated_data:
+                    self.fail(f"Sub-key '{sub_key}' not found after update.")
+                updated_data = updated_data[sub_key]
+
             if new_value is None:
                 self.assertFalse(key in updated_data,
-                                 f"Expected {key} to be removed, but it is still present.")
+                                 f"Expected '{key}' "
+                                 f"to be removed from '{sub_key}' section, but it is still present.")
             else:
                 updated_value = updated_data.get(key, None)
                 self.assertEqual(updated_value, new_value,
-                                 f"Expected {key} to be updated to {new_value}, but found {updated_value}")
+                                 f"Expected '{key}' in '{sub_key}' "
+                                 f"section to be updated to {new_value}, but found {updated_value}")
 
     def create_temp_specs(self):
         """Create copy of original valid spec in temp dir, so we can
@@ -120,8 +143,15 @@ class TestSpellFileReader(ExtendedTestCase):
         self.assertTrue(spell_spec.absolute_dir.exists(), "The path does not exist.")
         self.assertTrue(spell_spec.absolute_dir.is_dir(), "The path is not a directory.")
 
+    def test_init_bad_path(self):
+        """Test we can construct a from default location.
+        :return:
+        """
+        with self.assertRaises(FileNotFoundError):
+            _ = SpellSpecs("bad_path")
+
     def test_can_construct_custom_path(self):
-        """Test we can construct from custom working dir.
+        """Test we can construct from custom temp working dir.
         :return:
         """
         spell_spec = SpellSpecs(self.update__spell_file)
@@ -129,6 +159,10 @@ class TestSpellFileReader(ExtendedTestCase):
         self.assertTrue(spell_spec.absolute_dir.is_absolute(), "The path is not absolute.")
         self.assertTrue(spell_spec.absolute_dir.exists(), "The path does not exist.")
         self.assertTrue(spell_spec.absolute_dir.is_dir(), "The path is not a directory.")
+        spells_spec = spell_spec.master_spell()
+        mandatory_keys = ["working_dir", "pods", "iaas", "caas"]
+        for k in mandatory_keys:
+            self.assertIn(k, spells_spec, f"The '{k}' configuration should be present")
 
     def test_can_parse_master_spell(self):
         """Test we parse all files from custom dir.
@@ -140,7 +174,7 @@ class TestSpellFileReader(ExtendedTestCase):
         self.assertIn('iaas', data, "The 'iaas' configuration should be present")
         self.assertIn('caas', data, "The 'caas' configuration should be present")
 
-    def test_can_parse_master_spell2(self):
+    def test_can_resolve_working_dir(self):
         """Test we can construct a callback.
         :return:
         """
@@ -224,8 +258,9 @@ class TestSpellFileReader(ExtendedTestCase):
         with self.assertRaises(ValueError) as _:
             _ = SpellSpecs(self.update__spell_file)
 
-    def test_bad_iaas_spec(self):
-        """Test validates master spell should have pods_spell.
+    def test_missing_iaas_key(self):
+        """Test validates iaas spell should have set of mandatory keys
+        and optional keys.
         :return:
         """
         required_keys = ['host', 'username', 'password']
@@ -236,4 +271,74 @@ class TestSpellFileReader(ExtendedTestCase):
             with self.assertRaises(ValueError) as _:
                 _ = SpellSpecs(self.update__spell_file)
 
+    def test_ignore_iaas_bad_type(self):
+        """Test validates iaas spell should have a type.
+        :return:
+        """
+        self.create_temp_specs()
+        self.update_value_in_place(self._test_spell_iaas_file, "type", "bad")
+        with self.assertRaises(InvalidSpellSpec) as _:
+            _ = SpellSpecs(self.update__spell_file)
 
+    def test_missing_caas_key(self):
+        """Test validates caas spell file, in case if mandatory missing keys
+        should raise an exception.
+        :return:
+        """
+        required_keys = ['username', 'password']
+        for k in required_keys:
+            # create copy , pop key,
+            self.create_temp_specs()
+            self.update_value_in_place(self._test_spell_caas_file, k, None)
+            with self.assertRaises(ValueError) as _:
+                _ = SpellSpecs(self.update__spell_file)
+
+    def test_missing_pod_spec_key(self):
+        """Test validates pod spell file, in case if mandatory missing keys
+        should raise an exception.
+        :return:
+        """
+        required_keys = ['pod_spec_file', 'pod_name', 'role']
+        for k in required_keys:
+            # at each iteration we copy master ( valid , pop key and check)
+            self.create_temp_specs()
+            self.update_value_in_place(self._test_spell_pods_file, k, None, sub_key="client01")
+            with self.assertRaises(InvalidSpellSpec,
+                                   msg=f"mandatory key {k} is missing, must raise an exception") as _:
+                _ = SpellSpecs(self.update__spell_file)
+
+    def test_bad_pod_spec_file(self):
+        """Test validates pod spell file, in case if mandatory missing keys
+        should raise an exception.
+        :return:
+        """
+        self.update_value_in_place(
+            self._test_spell_pods_file, "pod_spec_file", "/bad/file", sub_key="client01")
+
+        with self.assertRaises(InvalidSpellSpec):
+            _ = SpellSpecs(self.update__spell_file)
+
+    def test_duplicate_pod_names(self):
+        """Test validates pod spell file, with duplicate pod names
+        :return:
+        """
+        self.update_value_in_place(
+            self._test_spell_pods_file, "pod_name", "test", sub_key="client01")
+        self.update_value_in_place(
+            self._test_spell_pods_file, "pod_name", "test", sub_key="server01")
+
+        with self.assertRaises(InvalidSpellSpec):
+            _ = SpellSpecs(self.update__spell_file)
+
+    def test_bad_pod_yaml_file(self):
+        """Test validates pod spell point to valid kubernetes pod spec.
+        :return:
+        """
+        self.create_temp_specs()
+        spec = SpellSpecs(self.update__spell_file)
+        pod_files = spec.pods_file()
+        remove_key_from_pod_spec(Path(pod_files[0]), "kind")
+
+        # try to load again
+        with self.assertRaises(InvalidPodSpec):
+            _ = SpellSpecs(self.update__spell_file)

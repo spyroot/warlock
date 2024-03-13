@@ -780,8 +780,8 @@ class EsxiStateReader:
              'DevRSS',
              'QPair',
              'RSS'
-        ]
 
+        ]
         :param nic: a string representing the name of the network adapter/
         :return: a list of parameters
         """

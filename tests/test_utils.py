@@ -1,5 +1,7 @@
 import os
 import tempfile
+from pathlib import Path
+
 import yaml
 
 
@@ -3809,3 +3811,17 @@ def sample_vm_stats():
     }"""
 
 
+def remove_key_from_pod_spec(
+        pod_spec_file: Path,
+        key: str,
+):
+    """
+    :param key: a parent key
+    :param pod_spec_file: kubernetes pod spec
+    :return:
+    """
+    with open(pod_spec_file, 'r') as file:
+        content = yaml.safe_load(file)
+    content.pop(key, None)
+    with open(pod_spec_file, 'w') as file:
+        yaml.dump(content, file)
