@@ -259,7 +259,6 @@ class TestsCallbackRingTunner(ExtendedTestCase):
         """
         :return:
         """
-
         callback = CallbackRingTunner(self.args, self.esxi_states)
         callback.on_iaas_prepare()
         # run each scenario
