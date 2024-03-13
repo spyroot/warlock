@@ -59,6 +59,8 @@ class TestsCallbackRingTunner(ExtendedTestCase):
             {"nics": ["vmnic0", "vmnic1"], "RX": 4096, "TX": 4096},
         ]
 
+        self.spell_spec = "../spell.json"
+
     def tearDown(self):
         """
         :return:
@@ -75,5 +77,5 @@ class TestsCallbackRingTunner(ExtendedTestCase):
         """Test we can construct a callback.
         :return:
         """
-        callback = CallbackPodsOperator()
-        callback.on_scenario_begin()
+        callback = CallbackPodsOperator(self.spell_spec)
+        # callback.on_scenario_begin()

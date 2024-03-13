@@ -1,0 +1,36 @@
+{
+  "type": "caas",
+  "username": "capv",
+  "password": "VMware1!",
+
+  "adapters": [
+    {
+      "name": "eth0",
+      "rx": [
+        2048,
+        4096
+      ],
+      "tx": [
+        2048,
+        4096
+      ]
+    },
+
+    {
+      "name": "eth1",
+      "rx": [
+        2048,
+        4096
+      ],
+      "tx": [
+        2048,
+        4096
+      ]
+    }
+  ],
+
+  "tuned_profile": {
+    "profile": "mus",
+    "path": "/usr/lib/tuned/mus/tuned.conf"
+  }
+}

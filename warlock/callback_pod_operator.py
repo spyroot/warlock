@@ -26,6 +26,8 @@ class CallbackPodsOperator(Callback):
         """
         super().__init__()
         self.spell_file = spell_file
+
+        working_dir =
         self.is_dry_run = dry_run
         self.dry_run_plan = []
 
@@ -48,6 +50,7 @@ class CallbackPodsOperator(Callback):
         :return: A list of planned operations.
         """
         return self.dry_run_plan
+
 
     def on_scenario_begin(self):
         """

@@ -1,59 +1,6 @@
 {
-  "iaas": {
-    "vcenter_ip": "vcsa.vf.vmw.run",
-    "username":  "administrator@vsphere.local",
-    "password": "VMware1!"
-  },
-  "esxi_adapters_tune": [
-    {
-      "auto": true,
-      "rx": [2048,  4096],
-      "tx": [2048,  4096],
-      "trusted": true,
-      "validate_driver": true,
-      "driver_version": "2.7.2",
-      "vmdq": [8, 16]
-    }
-  ],
-  "vm_adapters_tune": [
-    {
-      "adapter_name": "eth0",
-      "rx":  [2048,  4096],
-      "tx":  [2048,  4096]
-    },
-    {
-      "adapter_name": "eth1",
-      "rx":  [2048,  4096],
-      "tx":  [2048,  4096]
-    }
-  ],
-  "tuned_profile":
-  {
-    "profile": "mus",
-    "path": "/usr/lib/tuned/mus/tuned.conf"
-  },
-  "environment": {
-    "server": {
-      "pod_cpu": "8",
-      "pod_memory": "16Gi",
-      "pod_spec": "pod_spec/iperf_server.yaml",
-      "pod_name": "iperf-antrea-server-tester",
-      "cmd": "iperf3",
-      "port": 5201,
-      "options": "--server --one-off --daemon",
-      "role": "server"
-    },
-    "client": {
-      "pod_cpu": "8",
-      "pod_memory": "16Gi",
-      "pod_spec": "pod_spec/iperf_client.yaml",
-      "pod_name": "iperf-antrea-client-tester",
-      "cmd": "iperf3",
-      "port": 5201,
-      "duration": 60,
-      "parallel_streams": 4,
-      "options": "--set-mss 1460 --zerocopy -b 0 --json",
-      "role": "client"
-    }
-  }
+  "working_dir": "$HOME/dev/warlock",
+  "iaas_spell": "spell_iaas.json",
+  "caas_spell": "spell_caas.json",
+  "pods_spell": "spell_pods.json"
 }

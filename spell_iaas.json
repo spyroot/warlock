@@ -1,0 +1,27 @@
+{
+  "type": "iaas",
+  "iaas_type": "vmware",
+  "host": "vcsa.vf.vmw.run",
+  "username": "administrator@vsphere.local",
+  "password": "VMware1!",
+  "adapters": [
+    {
+      "auto": true,
+      "rx": [
+        2048,
+        4096
+      ],
+      "tx": [
+        2048,
+        4096
+      ],
+      "trusted": true,
+      "validate_driver": true,
+      "driver_version": "2.7.2",
+      "vmdq": [
+        8,
+        16
+      ]
+    }
+  ]
+}

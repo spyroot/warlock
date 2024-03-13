@@ -1,0 +1,27 @@
+{
+  "type": "pods",
+  "server01": {
+    "type": "pod",
+    "pod_cpu": "8",
+    "pod_memory": "16Gi",
+    "pod_spec_file": "pod_spec/iperf_server.yaml",
+    "pod_name": "iperf-antrea-server-tester",
+    "cmd": "iperf3",
+    "port": 5201,
+    "options": "--server --one-off --daemon",
+    "role": "server"
+  },
+  "client01": {
+    "type": "pod",
+    "pod_cpu": "8",
+    "pod_memory": "16Gi",
+    "pod_spec_file": "pod_spec/iperf_client.yaml",
+    "pod_name": "iperf-antrea-client-tester",
+    "cmd": "iperf3",
+    "port": 5201,
+    "duration": 60,
+    "parallel_streams": 4,
+    "options": "--set-mss 1460 --zerocopy -b 0 --json",
+    "role": "client"
+  }
+}
