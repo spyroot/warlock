@@ -25,9 +25,7 @@ def prepare_environment(
 ):
     """Read scenario from a json file and kubernetes pods used to evaluate
     a result.  i.e. we mutate a node, and we use pod to observer a result.
-
     After pod create we update scenario file and add pod IP address.
-
     :return:
     """
     with open(scenario_file, 'r') as file:
@@ -74,26 +72,45 @@ def main(cmd_args):
     """
     kube_state = KubernetesState()
     nodes = kube_state.fetch_nodes_uuid_ip(args.node_pool_name)
-
     test_environment_spec = prepare_environment(kube_state, cmd_args.test_spec)
-    print(test_environment_spec)
 
-    ssh_runner = SSHOperator(kube_state.node_ips(), username="capv", password="VMware1!")
-    node_actions = NodeActions(
-        kube_state.node_ips(),
-        ssh_runner,
-        test_environment_spec
+    vcenter_ip = os.getenv('VCENTER_IP', 'default')
+    username = os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local')
+    password = os.getenv('VCENTER_PASSWORD', 'default')
+
+    # a test VM that we know exists
+    self._test_valid_vm_name = os.getenv('TEST_VM_NAME', 'default')
+    self._test_valid_vm_substring = os.getenv('TEST_VMS_SUBSTRING', 'default')
+
+    ssh_executor = None
+    self.vmware_vim_state = VMwareVimState.from_optional_credentials(
+        ssh_executor, vcenter_ip=vcenter_ip,
+        username=username,
+        password=password
     )
 
-    # mutate environment
-    node_actions.update_ring_buffer()
-    node_actions.update_active_tuned()
-    # run experiment
-    test_result = node_actions.start_environment()
+    node_ips = kube_state.node_ips()
+    print(node_ips)
+    print(test_environment_spec)
 
-    # vectorize and save result
-    iperf_tcp_json_to_np(test_result)
-    plot_tcp_perf(test_result, "bps", "plots", "bps_per_core_ring_size4096.png")
+
+    #
+    # ssh_runner = SSHOperator(kube_state.node_ips(), username="capv", password="VMware1!")
+    # node_actions = NodeActions(
+    #     kube_state.node_ips(),
+    #     ssh_runner,
+    #     test_environment_spec
+    # )
+    #
+    # # mutate environment
+    # node_actions.update_ring_buffer()
+    # node_actions.update_active_tuned()
+    # # run experiment
+    # test_result = node_actions.start_environment()
+    #
+    # # vectorize and save result
+    # iperf_tcp_json_to_np(test_result)
+    # plot_tcp_perf(test_result, "bps", "plots", "bps_per_core_ring_size4096.png")
 
 
 if __name__ == '__main__':
@@ -103,7 +120,7 @@ if __name__ == '__main__':
     parser.add_argument("--tuned-profile-name", default="mus", help="Tuned profile name.")
     parser.add_argument("--username", default="capv", help="Username for SSH.")
     parser.add_argument("--password", help="Password for SSH (optional).")
-    parser.add_argument("--test_spec", default="mutate.json", help="test scenarion")
+    parser.add_argument("--test_spec", default="spell.json", help="test scenarion")
 
     args = parser.parse_args()
     main(args)

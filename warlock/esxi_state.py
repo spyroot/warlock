@@ -666,6 +666,20 @@ class EsxiStateReader:
             "tx_info": tx_info
         }
 
+    def read_ring_size(
+            self, adapter_name: str
+    ):
+        """
+        Return network adapter TX and RX size.
+        :param adapter_name: a network adapter name
+        :return: A Data a list hold Dict [{"RX": 4096, "RXJumbo": 0, "RXMini": 0, "TX": 4096}]
+        """
+        cmd = f"esxcli --formatter=xml network nic ring current get  -n {adapter_name}"
+        _data, exit_code, _ = self._ssh_operator.run(self.fqdn, cmd)
+        if exit_code == 0 and _data is not None:
+            return json.loads(EsxiStateReader.complex_xml2json(_data))
+        return []
+
     def write_ring_size(
             self,
             nic: str,

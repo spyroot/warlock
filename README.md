@@ -9,6 +9,26 @@ conda install pytorch torchvision -c pytorch
 pip install pyvmomi paramiko pyyaml
 ```
 
+## Overview
+
+Warlock is a spell-casting tool designed to combine a set of spells that mutate some environments.
+
+Consider IaaS as a world where Caas is an entity in a castle within that world, and worker nodes are minions. Each minion can perform some work and uses PODs. For example, a minion can move magic herbs from one spot to another.
+
+Minions can either walk (use a slow CNI) or teleport (use DPDK).
+
+The main play here is that the Warlock needs to learn a set of spells that will make the minions more efficient.
+
+Since the Warlock has the power to bend reality, it can mutate the entire world (IaaS).
+
+
+
+
+
+
+
+
+
 ## API
 
 ## EsxiStateReader Class

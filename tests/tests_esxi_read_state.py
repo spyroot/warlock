@@ -1,7 +1,6 @@
 import json
 import os
 import random
-import unittest
 
 import numpy as np
 
@@ -9,7 +8,6 @@ from tests.extended_test_case import ExtendedTestCase
 from tests.test_utils import (
     generate_sample_adapter_list_xml,
     generate_sample_vm_list,
-    generate_vf_state_data,
     generate_nic_data
 )
 from warlock.esxi_state import EsxiStateReader
@@ -147,7 +145,6 @@ class TestsEsxiStateReader(ExtendedTestCase):
                 esxi_fqdn=self.esxi_fqdn,
                 username=self.username,
                 password=self.password) as esxi_host_state:
-
             nic_list = esxi_host_state.read_adapter_list()
             expected_keys = {
                 "AdminStatus", "Description", "Driver",
@@ -196,7 +193,6 @@ class TestsEsxiStateReader(ExtendedTestCase):
                 username=self.username,
                 password=self.password
         ) as esxi_host_state:
-
             # for default adapter.
             m = esxi_host_state.read_available_mod_parameters()
             self.assertIsNotNone(m, "must empty list or a list is not a None")
@@ -266,7 +262,6 @@ class TestsEsxiStateReader(ExtendedTestCase):
                 username=self.username,
                 password=self.password
         ) as esxi_host_state:
-
             expected_keys = {
                 "ConfigFile", "DisplayName", "ProcessID",
                 "UUID", "VMXCartelID", "WorldID"
@@ -392,7 +387,6 @@ class TestsEsxiStateReader(ExtendedTestCase):
                 username=self.username,
                 password=self.password
         ) as esxi_host_state:
-
             pf_list = esxi_host_state.read_pf_adapter_names()
             random_pf = random.choice(pf_list)
             vf_list = esxi_host_state.read_active_vfs(pf_nic_name=random_pf)
@@ -528,14 +522,14 @@ class TestsEsxiStateReader(ExtendedTestCase):
             self.assertIn('stats', stats, "stats should be a dict")
 
     def test_read_vm_net_port_id(self):
-        """Tests read_vm_net_port_id """
+        """Tests read internal port ids """
         with EsxiStateReader.from_optional_credentials(
                 esxi_fqdn=self.esxi_fqdn,
                 username=self.username,
                 password=self.password
         ) as esxi_host_state:
             port_ids = esxi_host_state.read_netstats_vm_net_port_ids()
-            self.assertIsInstance(port_ids, dict, "read_vm_net_port_id should be a dict")
+            self.assertIsInstance(port_ids, dict, "should be a dict")
             for port_id, vm_name in port_ids.items():
                 self.assertIsInstance(port_id, int, "Port ID should be an integer")
                 self.assertIsInstance(vm_name, str, "VM name should be a string")
@@ -558,7 +552,7 @@ class TestsEsxiStateReader(ExtendedTestCase):
             self.assertIn('stats', stats, "stats should be a dict")
 
     def test_can_read_port_net_stats(self):
-        """Tests dvs pf stats note it same as reading network stats."""
+        """Tests can read stats from pfname ."""
         with EsxiStateReader.from_optional_credentials(
                 esxi_fqdn=self.esxi_fqdn,
                 username=self.username,
@@ -712,23 +706,24 @@ class TestsEsxiStateReader(ExtendedTestCase):
         ) as esxi_host_state:
             esxi_host_state.update_num_qps_per_vf("icen", 16)
 
-    def test_can_update_num_queue_en40(self):
-        """Tests write_ring_size should return false for bad adapter name"""
-        with EsxiStateReader.from_optional_credentials(
-                esxi_fqdn=self.esxi_fqdn,
-                username=self.username,
-                password=self.password
-        ) as esxi_host_state:
-            esxi_host_state.update_num_qps_per_vf("i40en", 16)
+    def test_cannot_update_num_queue_en40(self):
+        """Tests num queue, en40 has no  num qps should fail"""
+        with self.assertRaises(ValueError):
+            with EsxiStateReader.from_optional_credentials(
+                    esxi_fqdn=self.esxi_fqdn,
+                    username=self.username,
+                    password=self.password
+            ) as esxi_host_state:
+                esxi_host_state.update_num_qps_per_vf("i40en", 16)
 
     def test_can_update_max_vfs_from_array_en40(self):
-        """Tests test_can_update_max_vfs_from_array_en40
-        update max vfs for all nics """
+        """Tests check we can update max vfs"""
         with EsxiStateReader.from_optional_credentials(
                 esxi_fqdn=self.esxi_fqdn,
                 username=self.username,
                 password=self.password
         ) as esxi_host_state:
+
             max_vfs = 16
             esxi_host_state.update_max_vfs("i40en", max_vfs)
             module_parameters = esxi_host_state.read_module_parameters(module_name="i40en")
@@ -750,6 +745,7 @@ class TestsEsxiStateReader(ExtendedTestCase):
                 username=self.username,
                 password=self.password
         ) as esxi_host_state:
+
             esxi_host_state.update_rss("i40en", True)
             module_parameters = esxi_host_state.read_module_parameters(module_name="i40en")
             nic_list = esxi_host_state.read_adapters_by_driver("i40en")
@@ -781,6 +777,15 @@ class TestsEsxiStateReader(ExtendedTestCase):
             self.assertIsNotNone(rx_itr_value, "RxITR parameter not found.")
             self.assertEqual(rx_itr_value, "106", "RxITR parameter value is not as expected.")
 
+    def test_cannot_update_rx_itr(self):
+        """Tests that we can update the TxITR parameter.
+        from default 50 microseconds """
+        with self.assertRaises(ValueError):
+            with EsxiStateReader.from_optional_credentials(
+                    esxi_fqdn=self.esxi_fqdn, username=self.username,
+                    password=self.password) as esxi_host_state:
+                esxi_host_state.update_rx_itr("i40en", 100000)
+
     def test_can_update_tx_itr(self):
         """Tests that we can update the TxITR parameter.
         from default 50 microseconds """
@@ -798,6 +803,15 @@ class TestsEsxiStateReader(ExtendedTestCase):
 
             self.assertIsNotNone(tx_itr_value, "TxITR parameter not found.")
             self.assertEqual(tx_itr_value, "40", "TxITR parameter value is not as expected.")
+
+    def test_cannot_update_tx_itr(self):
+        """Tests that we can update the TxITR parameter.
+        from default 50 microseconds """
+        with self.assertRaises(ValueError):
+            with EsxiStateReader.from_optional_credentials(
+                    esxi_fqdn=self.esxi_fqdn, username=self.username,
+                    password=self.password) as esxi_host_state:
+                esxi_host_state.update_tx_itr("i40en", 100000)
 
     def test_can_update_vmdq(self):
         """Tests that we can update the VMDQ parameter.
@@ -820,6 +834,14 @@ class TestsEsxiStateReader(ExtendedTestCase):
 
             self.assertIsNotNone(vmdq_value, "VMDQ parameter not found.")
             self.assertEqual(rss_value_str, vmdq_value, "VMDQ parameter value is not as expected.")
+
+    def test_can_update_bad_vmdq(self):
+        """Tests do not accept bad value the VMDQ parameter"""
+        with self.assertRaises(ValueError):
+            with EsxiStateReader.from_optional_credentials(
+                    esxi_fqdn=self.esxi_fqdn, username=self.username,
+                    password=self.password) as esxi_host_state:
+                esxi_host_state.update_vmdq("i40en", 128)
 
     def test_can_update_vmdq_rss(self):
         """Tests that we can update the VMDQ parameter.
@@ -1053,3 +1075,21 @@ class TestsEsxiStateReader(ExtendedTestCase):
                                               "'Receivepacketsdropped' should be an int")
                     else:
                         self.fail("No port stats returned")
+
+    def test_read_ring_size(self):
+        """Tests we can read all net stats ."""
+        with EsxiStateReader.from_optional_credentials(
+                esxi_fqdn=self.esxi_fqdn,
+                username=self.username,
+                password=self.password
+        ) as esxi_host_state:
+            expected_keys = ["RX", "RXJumbo", "RXMini", "TX"]
+            data = esxi_host_state.read_ring_size(adapter_name="vmnic7")
+            self.assertIsInstance(data, list, "Returned data should be a list")
+            self.assertTrue(len(data) == 1, "Returned list should contain one dictionary")
+            ring_size_dict = data[0]
+            self.assertIsInstance(ring_size_dict, dict, "Dictionary expected in the list")
+            self.assertEqual(set(ring_size_dict.keys()), set(expected_keys),
+                             "Keys in the returned dictionary should match expected keys")
+
+

@@ -4,16 +4,27 @@
     "username":  "administrator@vsphere.local",
     "password": "VMware1!"
   },
-  "adapters_tune": [
+  "esxi_adapters_tune": [
+    {
+      "auto": true,
+      "rx": [2048,  4096],
+      "tx": [2048,  4096],
+      "trusted": true,
+      "validate_driver": true,
+      "driver_version": "2.7.2",
+      "vmdq": [8, 16]
+    }
+  ],
+  "vm_adapters_tune": [
     {
       "adapter_name": "eth0",
-      "rx": 4096,
-      "tx": 4096
+      "rx":  [2048,  4096],
+      "tx":  [2048,  4096]
     },
     {
       "adapter_name": "eth1",
-      "rx": 4096,
-      "tx": 4096
+      "rx":  [2048,  4096],
+      "tx":  [2048,  4096]
     }
   ],
   "tuned_profile":

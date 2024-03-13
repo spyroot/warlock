@@ -8,15 +8,15 @@ Author: Mus
  spyroot@gmail.com
  mbayramo@stanford.edu
 """
+from typing import List, Dict
+import time
 import json
 import subprocess
-from typing import List, Dict
-
-from ssh_operator import SSHOperator
-import time
+from warlock.ssh_operator import SSHOperator
+from warlock.shell_operator import ShellOperator
 
 
-class NodeActions:
+class NodeActions(ShellOperator):
     def __init__(
             self, node_ips: List[str],
             ssh_executor: SSHOperator,
@@ -38,7 +38,7 @@ class NodeActions:
             self.tun_value = test_environment_spec
         else:
             # If no spec is provided, fallback to loading from the default file (optional)
-            self.tun_value_file = "../mutate.json"
+            self.tun_value_file = "../spell.json"
             with open(self.tun_value_file, 'r') as file:
                 self.tun_value = json.load(file)
 
@@ -140,32 +140,6 @@ class NodeActions:
             else:
                 print(f"Failed to get current profile on {ip}; exit code: {exit_code}.")
 
-    @staticmethod
-    def run_command(cmd):
-        """
-        :param cmd:
-        :return:
-        """
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, shell=True
-        )
-
-        if result.returncode == 0:
-            return result.stdout.strip().split('\n')
-        else:
-            raise Exception(f"Command '{cmd}' failed with error: {result.stderr.strip()}")
-
-    @staticmethod
-    def run_command_json(cmd: str) -> Dict:
-        """
-        Execute a shell command that returns JSON and parse the output to a Python dict.
-        """
-        result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
-        if result.returncode == 0:
-            return json.loads(result.stdout)
-        else:
-            raise Exception(f"Command '{cmd}' failed with error: {result.stderr.strip()}")
-
     def start_environment(self):
         """
         Starts an iperf server on one pod and then starts an iperf client
@@ -216,5 +190,3 @@ class NodeActions:
             print("Failed to parse client output as JSON.")
 
         return 0, 0, {}
-
-
