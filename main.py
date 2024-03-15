@@ -7,55 +7,20 @@
 #
 #
 import argparse
-from pathlib import Path
+import logging
 
-from warlock.kube_state import KubernetesState
-from warlock.node_actions import NodeActions
-from warlock.ssh_operator import SSHOperator
-from warlock.inference import (
-    iperf_tcp_json_to_np, plot_tcp_perf
-)
-
-import json
+from warlock.callbacks.callback_pod_operator import CallbackPodsOperator
+from warlock.spell_specs import SpellSpecs
+from warlock.states.kube_state_reader import KubernetesState
+from warlock.warlock import WarlockSpellCaster
 
 
-def prepare_environment(
-        kube_state: KubernetesState,
-        scenario_file: str,
-):
-    """Read scenario from a json file and kubernetes pods used to evaluate
-    a result.  i.e. we mutate a node, and we use pod to observer a result.
-    After pod create we update scenario file and add pod IP address.
-    :return:
-    """
-    with open(scenario_file, 'r') as file:
-        test_spec = json.load(file)
-        server_config = test_spec.get('environment', {}).get('server', {})
-        client_config = test_spec.get('environment', {}).get('client', {})
-
-        server_pod_spec = Path(server_config.get('pod_spec')).resolve().absolute()
-        client_pod_spec = Path(client_config.get('pod_spec')).resolve().absolute()
-
-        server_pod_name = server_config.get('pod_name')
-        client_pod_name = client_config.get('pod_name')
-
-        node_output = KubernetesState.run_command(f"kubectl apply -f {server_pod_spec}")
-        server_pod_spec = kube_state.read_pod_spec(server_pod_name)
-        server_pod_ip = server_pod_spec.get('status', {}).get('podIPs', [])[0].get('ip')
-
-        node_output = KubernetesState.run_command(f"kubectl apply -f {client_pod_spec}")
-        server_pod_spec = kube_state.read_pod_spec(server_pod_name)
-        client_pod_ip = server_pod_spec.get('status', {}).get('podIPs', [])[0].get('ip')
-
-        server_config['ip'] = server_pod_ip
-        client_config['ip'] = client_pod_ip
-
-    return test_spec
+def configure_logging():
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 
 def debug_info(kube_state: KubernetesState):
     """
-
     :param kube_state:
     :return:
     """
@@ -70,29 +35,41 @@ def main(cmd_args):
     """
     :return:
     """
-    kube_state = KubernetesState()
-    nodes = kube_state.fetch_nodes_uuid_ip(args.node_pool_name)
-    test_environment_spec = prepare_environment(kube_state, cmd_args.test_spec)
+    configure_logging()
 
-    vcenter_ip = os.getenv('VCENTER_IP', 'default')
-    username = os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local')
-    password = os.getenv('VCENTER_PASSWORD', 'default')
-
-    # a test VM that we know exists
-    self._test_valid_vm_name = os.getenv('TEST_VM_NAME', 'default')
-    self._test_valid_vm_substring = os.getenv('TEST_VMS_SUBSTRING', 'default')
-
-    ssh_executor = None
-    self.vmware_vim_state = VMwareVimState.from_optional_credentials(
-        ssh_executor, vcenter_ip=vcenter_ip,
-        username=username,
-        password=password
+    master_spell = SpellSpecs(cmd_args.spell_file)
+    warlock = WarlockSpellCaster(
+        callbacks=[CallbackPodsOperator(
+            spell_master_specs=master_spell)
+        ],
+        spells_specs=master_spell
     )
+    warlock.show_spells()
+    warlock.cast_spell()
 
-    node_ips = kube_state.node_ips()
-    print(node_ips)
-    print(test_environment_spec)
+    # cast_spell(self):
+    # kube_state = KubernetesState()
+    # nodes = kube_state.fetch_nodes_uuid_ip(args.node_pool_name)
+    # test_environment_spec = prepare_environment(kube_state, cmd_args.test_spec)
+    #
+    # vcenter_ip = os.getenv('VCENTER_IP', 'default')
+    # username = os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local')
+    # password = os.getenv('VCENTER_PASSWORD', 'default')
+    #
+    # # a test VM that we know exists
+    # self._test_valid_vm_name = os.getenv('TEST_VM_NAME', 'default')
+    # self._test_valid_vm_substring = os.getenv('TEST_VMS_SUBSTRING', 'default')
+    #
+    # ssh_executor = None
+    # self.vmware_vim_state = VMwareVimState.from_optional_credentials(
+    #     ssh_executor, vcenter_ip=vcenter_ip,
+    #     username=username,
+    #     password=password
+    # )
 
+    # node_ips = kube_state.node_ips()
+    # print(node_ips)
+    # print(test_environment_spec)
 
     #
     # ssh_runner = SSHOperator(kube_state.node_ips(), username="capv", password="VMware1!")
@@ -115,12 +92,14 @@ def main(cmd_args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Node configuration script.")
-    parser.add_argument("--node-pool-name", default="vf-test-np1-", help="Name of the node pool.")
-    parser.add_argument("--default-uplink", default="eth0", help="Default network uplink.")
-    parser.add_argument("--tuned-profile-name", default="mus", help="Tuned profile name.")
-    parser.add_argument("--username", default="capv", help="Username for SSH.")
-    parser.add_argument("--password", help="Password for SSH (optional).")
-    parser.add_argument("--test_spec", default="spell.json", help="test scenarion")
+    # parser.add_argument("--node-pool-name", default="vf-test-np1-", help="Name of the node pool.")
+    # parser.add_argument("--default-uplink", default="eth0", help="Default network uplink.")
+    # parser.add_argument("--tuned-profile-name", default="mus", help="Tuned profile name.")
+    # parser.add_argument("--username", default="capv", help="Username for SSH.")
+    # parser.add_argument("--password", help="Password for SSH (optional).")
+    parser.add_argument("--spell_file", default="spell.json", help="a master spell warlock will read")
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                        help="Set the logging level")
 
     args = parser.parse_args()
     main(args)

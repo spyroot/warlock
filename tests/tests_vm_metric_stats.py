@@ -11,8 +11,8 @@ import unittest
 import numpy as np
 import time
 
-from warlock.vm_metric_stats import VMwareMetricCollector
-from warlock.vm_state import (
+from warlock.metrics.vm_metric_stats import VMwareMetricCollector
+from warlock.states.vm_state import (
     VMwareVimState, VMNotFoundException, EsxHostNotFound
 )
 

@@ -1,11 +1,8 @@
-import json
 import os
 
 from tests.extended_test_case import ExtendedTestCase
-from warlock.callback_pod_operator import CallbackPodsOperator
-from warlock.callback_ring_tunner import CallbackRingTunner
-from warlock.esxi_state import EsxiStateReader
-from warlock.spell_generator import SpellGenerator
+from warlock.callbacks.callback_pod_operator import CallbackPodsOperator
+from warlock.spell_specs import SpellSpecs
 
 
 class TestsCallbackRingTunner(ExtendedTestCase):
@@ -77,5 +74,5 @@ class TestsCallbackRingTunner(ExtendedTestCase):
         """Test we can construct a callback.
         :return:
         """
-        callback = CallbackPodsOperator(self.spell_spec)
-        # callback.on_scenario_begin()
+        callback = CallbackPodsOperator(spell_master_specs=SpellSpecs(self.spell_spec))
+        callback.on_scenario_begin()

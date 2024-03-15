@@ -1,15 +1,23 @@
 """
-Spell Spec encapsulate a master spell,
+A Spell Spec is a framework that encapsulates what is termed a "Master Spell."
+This Master Spell is essentially an aggregation of several spells which together
+create a comprehensive strategy.
 
-A master spell consist set of spell that form a master spell.
+These spells, when cast by a Spell Caster, are applied to various environments
+to achieve specific objectives, such as optimization tasks.
 
-There are 3 main spell and set of optional spells.
-Main spell are iaas, caas, pods.
+The objective is to learn a powerful Master Spell upon acting on environment
+producing maximizing desired behavior.
 
-- IaaS spell is set of spell that transform iaas.
-- Caas spell is set of spell that transform caas.
-- Pods spell is set of entities that warlock use
-  to check power of master spell.
+The framework is designed to be abstract, using terms like IaaS,
+CaaS, and pods metaphorically,  rather than referring to actual infrastructure components.
+
+The system categorizes spells into three primary types alongside additional, optional spells:
+
+IaaS Spells: Aimed at transforming what is conceptually represented as IaaS.
+CaaS Spells: Focus on altering what is analogously understood as CaaS.
+Pods Spells: These are theoretical entities used to evaluate the effectiveness
+of a Master Spell, not direct references to Kubernetes pods or similar technologies.
 
 Author: Mustafa Bayramov
 spyroot@gmail.com
@@ -326,8 +334,7 @@ class SpellSpecs:
             content: Dict[str, Any],
             base_path: Union[str, Path]
     ) -> None:
-        """
-        Validates the pods spell specs.
+        """Validates the pods spell specs.
         :param content: The pods configuration dictionary.
         :param base_path: The base path for resolving relative file paths.
         :raises ValueError: If the required keys are missing for the specified IaaS type.

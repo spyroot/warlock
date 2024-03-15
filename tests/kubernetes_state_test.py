@@ -1,7 +1,6 @@
 import json
 import os
 from ipaddress import ip_address
-import unittest
 from unittest.mock import patch
 
 from tests.extended_test_case import ExtendedTestCase
@@ -11,7 +10,7 @@ from tests.test_utils import (
     sample_control_node,
     sample_worker_node
 )
-from warlock.kube_state import KubernetesState
+from warlock.states.kube_state_reader import KubernetesState
 
 
 class TestKubernetesState(ExtendedTestCase):

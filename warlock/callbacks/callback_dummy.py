@@ -1,4 +1,4 @@
-from warlock.callback import Callback
+from warlock.callbacks.callback import Callback
 
 
 class DummyCallback(Callback):

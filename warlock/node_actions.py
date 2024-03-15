@@ -8,40 +8,34 @@ Author: Mus
  spyroot@gmail.com
  mbayramo@stanford.edu
 """
-from typing import List, Dict
+from typing import List
 import time
 import json
-import subprocess
-from warlock.ssh_operator import SSHOperator
-from warlock.shell_operator import ShellOperator
+
+from warlock.spell_specs import SpellSpecs
+from warlock.operators.ssh_operator import SSHOperator
+from warlock.operators.shell_operator import ShellOperator
 
 
 class NodeActions(ShellOperator):
     def __init__(
-            self, node_ips: List[str],
-            ssh_executor: SSHOperator,
-            test_environment_spec=None
+            self,
+            node_ips: List[str],
+            ssh_operator: SSHOperator,
+            spell_specs: SpellSpecs
     ):
         """
         Initializes the NodeActions instance with a list of node IPs, an SSH command executor,
         and the test environment specification.
 
         :param node_ips: A list of IP addresses for the  kubernetes nodes.
-        :param ssh_executor: An object responsible for executing SSH commands.
-        :param test_environment_spec: The test environment specification including configurations for the test.
+        :param ssh_operator: An object responsible for executing SSH commands.
+        :param spell_specs: The test environment specification including configurations for the test.
         """
         self.node_ips = node_ips
-        self.ssh_executor = ssh_executor
+        self.ssh_executor = ssh_operator
 
-        # Set test environment specification directly from the provided argument
-        if test_environment_spec is not None:
-            self.tun_value = test_environment_spec
-        else:
-            # If no spec is provided, fallback to loading from the default file (optional)
-            self.tun_value_file = "../spell.json"
-            with open(self.tun_value_file, 'r') as file:
-                self.tun_value = json.load(file)
-
+        self.tun_value = spell_specs
         self.debug = True
 
     def update_ring_buffer(self):

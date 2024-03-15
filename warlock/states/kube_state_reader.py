@@ -307,12 +307,17 @@ class KubernetesState:
 
         return list(self._cache_addr2node.keys())
 
+    @staticmethod
     def read_pod_spec(
-            self,
             pod_name: str,
             ns: Optional[str] = "default"
     ):
-        return self.run_command_json(f"kubectl get pod {pod_name} -n {ns} -o json")
+        """
+        :param pod_name:
+        :param ns:
+        :return:
+        """
+        return KubernetesState.run_command_json(f"kubectl get pod {pod_name} -n {ns} -o json")
 
     def pods_name(
             self,

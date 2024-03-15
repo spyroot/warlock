@@ -1,0 +1,142 @@
+import logging
+import time
+from typing import Optional
+
+from warlock.callbacks.callback import Callback
+from warlock.operators.shell_operator import ShellOperator
+from warlock.spell_specs import SpellSpecs
+from warlock.states.kube_state_reader import KubernetesState
+
+
+class CallbackPodsOperator(Callback):
+    """
+    This class is designed to adjust the RX and TX ring sizes for network adapters
+    across a list of ESXi hosts. It receives a list of dictionaries detailing NICs,
+    RX, and TX values for each host, and a list of EsxiStateReader objects to interact
+    with the ESXi hosts.
+    """
+    def __init__(
+            self,
+            spell_master_specs: SpellSpecs,
+            dry_run: Optional[bool] = True,
+            logger: Optional[logging.Logger] = None,
+            reuse_existing:  Optional[bool] = False,
+    ):
+        """
+        Create Pod Operator
+        :param spell_master_specs:
+        :param dry_run:
+        :param logger:
+        :param reuse_existing:
+        """
+        super().__init__()
+        self.logger = logger if logger else logging.getLogger(__name__)
+        self._master_spell_spec = spell_master_specs
+
+        self.is_dry_run = dry_run
+        self.dry_run_plan = []
+        self._abs_dir = self._master_spell_spec.absolute_dir
+
+        # re-use exiting won't delete pod and re-use existing pods
+        self._reuse_existing = reuse_existing
+        # default wait time
+        self._timeout = 30
+        self._default_timeout = self._timeout
+
+    def _log_dry_run_operation(
+            self,
+            ops: str,
+    ):
+        """
+        Log an operation that would be executed during a dry run.
+        """
+        operation = {
+            "operation": ops,
+        }
+        self.dry_run_plan.append(operation)
+
+    def get_dry_run_plan(self):
+        """
+        Retrieve the plan of operations
+        that would be executed during a dry run.
+        :return: A list of planned operations.
+        """
+        return self.dry_run_plan
+
+    def on_scenario_begin(self):
+        """
+        On scenario begin this callback creates multiple pods and waits for all to be ready.
+        It updates spell caster
+        :return:
+        """
+        self.logger.info("CallbackPodsOperator scenario begin")
+
+        pods_spec = self._master_spell_spec.pods_spells()
+        pod_creation_commands = []
+
+        for k, v in pods_spec.items():
+            if isinstance(v, dict) and v['type'] == 'pod':
+                pod_spec = v
+                pod_name = pod_spec['pod_name']
+                pod_ns = pod_spec.get('namespace', "default")
+                pod_spec_path = (self._abs_dir / pod_spec['pod_spec_file']).resolve()
+
+                # schedule pod creation as best effort
+                ShellOperator.run_command_json(f"kubectl apply -f {pod_spec_path} -n {pod_ns} -o json")
+                pod_creation_commands.append((k, pod_name, pod_ns))
+
+        # blocking call
+        all_pods_ready = False
+        while self._timeout > 0 and not all_pods_ready:
+            all_pods_ready = True
+            for k, pod_name, pod_ns in pod_creation_commands:
+                pod_state = KubernetesState.read_pod_spec(pod_name, pod_ns)
+                if (pod_state.get('status', {}).get('phase') != 'Running' or
+                        not pod_state.get('status', {}).get('podIPs')):
+                    all_pods_ready = False
+                    break
+            if not all_pods_ready:
+                time.sleep(5)
+                self._timeout -= 1
+
+        if not all_pods_ready:
+            self.logger.error("Not all pods were ready within the timeout period.")
+            return
+
+        for k, pod_name, pod_ns in pod_creation_commands:
+            pod_state = KubernetesState.read_pod_spec(pod_name, pod_ns)
+            pod_addr = pod_state.get('status', {}).get('podIPs', [])[0].get('ip')
+            phase = pod_state.get('status', {}).get('phase')
+            node_addr = pod_state.get('status', {}).get('hostIP')
+            self.logger.info(f"Scheduled pod read ip {pod_addr} status {phase} node {node_addr}")
+            self.caster_state.k8s_pods_states[k] = {
+                'ip': pod_addr,
+                'phase': phase,
+                'node_ip': node_addr,
+                'pod_state': pod_state
+            }
+
+        self._timeout = self._default_timeout
+
+    def on_scenario_end(self):
+        """
+        :return:
+        """
+        self.logger.info("CallbackPodsOperator scenario end")
+
+        if self._reuse_existing:
+            self.logger.info("CallbackPodsOperator skip pod delete")
+            return
+
+        if not hasattr(self.caster_state, 'k8s_pods_states') or not self.caster_state.k8s_pods_states:
+            self.logger.info("No pods recorded in the caster state for deletion.")
+            return
+
+        pods_spec = self._master_spell_spec.pods_spells()
+        for k, v in pods_spec.items():
+            if isinstance(v, dict) and v['type'] == 'pod':
+                pod_spec = v
+                pod_name = pod_spec['pod_name']
+                pod_ns = pod_spec.get('namespace', "default")
+                last_state = ShellOperator.run_command(f"kubectl delete pod {pod_name} -n {pod_ns}")
+                self.logger.info(f"Deleted pod {pod_name} in namespace {pod_ns}: {last_state}")

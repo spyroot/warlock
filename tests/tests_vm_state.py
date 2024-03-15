@@ -6,13 +6,12 @@ spyroot@gmail.com
 mbayramo@stanford.edu
 
 """
-import json
 import os
 import unittest
 import time
 
 
-from warlock.vm_state import (
+from warlock.states.vm_state import (
     VMwareVimState,
     SwitchNotFound,
     EsxHostNotFound,
@@ -20,8 +19,7 @@ from warlock.vm_state import (
     PciDeviceClass,
     VMwareVirtualMachine,
     VMwareClusterComputeResource,
-    VMwareResourcePool, VMwareManagedEntity,
-    VMwareDistributedVirtualSwitch
+    VMwareResourcePool, VMwareManagedEntity
 )
 
 

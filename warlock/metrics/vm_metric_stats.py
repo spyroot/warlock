@@ -20,7 +20,7 @@ from typing import Optional, Dict, List, Tuple, Any
 
 import numpy as np
 
-from warlock.vm_state import (
+from warlock.states.vm_state import (
     VMwareVimState
 )
 

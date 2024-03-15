@@ -34,7 +34,7 @@ from pyVmomi import vim
 import atexit
 import ssl
 
-from warlock.ssh_operator import SSHOperator
+from warlock.operators.ssh_operator import SSHOperator
 
 VMConfigInfo = vim.vm.ConfigInfo
 VirtualHardwareInfo = vim.vm.VirtualHardware

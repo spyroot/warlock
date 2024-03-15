@@ -2,9 +2,9 @@ import json
 import os
 
 from tests.extended_test_case import ExtendedTestCase
-from warlock.callback_ring_tunner import CallbackRingTunner
-from warlock.esxi_state import EsxiStateReader
-from warlock.spell_generator import SpellGenerator
+from warlock.callbacks.callback_ring_tunner import CallbackRingTunner
+from warlock.states.esxi_state_reader import EsxiStateReader
+from warlock.generators.spell_generator import SpellGenerator
 
 
 class TestsCallbackRingTunner(ExtendedTestCase):
@@ -245,14 +245,14 @@ class TestsCallbackRingTunner(ExtendedTestCase):
         """Test can mutate env
         """
         callback = CallbackRingTunner(self.args, self.esxi_states)
-        callback.on_iaas_mutate_begin()
+        callback.on_iaas_spell_begin()
         exec_plan = callback.get_dry_run_plan()
 
     def test_on_release(self):
         """Test can mutate env
         """
         callback = CallbackRingTunner(self.args, self.esxi_states)
-        callback.on_iaas_mutate_begin()
+        callback.on_iaas_spell_begin()
         callback.on_iaas_release()
 
     def test_full_cycle(self):
@@ -263,7 +263,7 @@ class TestsCallbackRingTunner(ExtendedTestCase):
         callback.on_iaas_prepare()
         # run each scenario
         for _ in self.args:
-            callback.on_iaas_mutate_begin()
+            callback.on_iaas_spell_begin()
         callback.on_iaas_release()
         exec_plan = callback.get_dry_run_plan()
         print(json.dumps(exec_plan, indent=4))

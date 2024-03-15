@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Tuple, Optional
-from warlock.callback import Callback, listify
-from warlock.esxi_state import EsxiStateReader
+from warlock.callbacks.callback import Callback, listify
+from warlock.states.esxi_state_reader import EsxiStateReader
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
@@ -236,7 +236,7 @@ class CallbackRingTunner(Callback):
             for future in as_completed(futures):
                 pass
 
-    def on_iaas_mutate_begin(self):
+    def on_iaas_spell_begin(self):
         """On iaas this all back mutate network adapter ring size.
         :return:
         """
@@ -252,7 +252,7 @@ class CallbackRingTunner(Callback):
             for future in as_completed(futures):
                 pass
 
-    def on_iaas_mutate_end(self):
+    def on_iaas_spell_end(self):
         """On iaas mutate end we do nothing
         :return:
         """

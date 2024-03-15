@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 
-from warlock.vm_metric_stats import VMwareMetricCollector
+from warlock.metrics.vm_metric_stats import VMwareMetricCollector
 
 
 def vim_state_examples() -> VMwareMetricCollector:

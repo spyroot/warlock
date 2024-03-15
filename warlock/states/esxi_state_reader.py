@@ -20,9 +20,11 @@ from typing import Optional, Dict, List, Any, Union
 
 import numpy as np
 
-from warlock.ssh_operator import SSHOperator
+from warlock.operators.ssh_operator import SSHOperator
 import xml.etree.ElementTree as ET
 import json
+
+from warlock.states.spell_caster_state import SpellCasterState
 
 
 class InvalidESXiHostException(Exception):
@@ -34,24 +36,31 @@ class InvalidESXiHostException(Exception):
         super().__init__(self.message)
 
 
-class EsxiStateReader:
+class EsxiStateReader(SpellCasterState):
     INTERRUPT_INTERVAL_RANGE = 4095
     MAX_VMDQ = 16
 
     def __init__(
-            self,
-            ssh_operator: SSHOperator,
+            self, ssh_operator: SSHOperator,
             credential_dict: Optional[Dict] = None,
             fqdn: Optional[str] = None,
             username: Optional[str] = "root",
-            password: Optional[str] = ""
-    ):
+            password: Optional[str] = ""):
         """
+        Class defined state value from VMware ESXi,
+        A state value are current network adapter low level values such ring size,
+        vmdq etc.
+
+        In order collect and read a state we need an operator. Since most of the values
+        has to be collected directly and ESXi doesn't expose API for may we have to
+        read this value via SSH transport.
+
         :param ssh_operator:  ssh operator is ssh operator that we use to connect and execute
         :param fqdn: esxi fqdn or ip address
         :param username: esxi username
         :param password: esxi password
         """
+        super().__init__()
         self._ssh_operator = ssh_operator
         self.credential_dict = credential_dict
 

@@ -76,7 +76,6 @@ class TestSpellFileReader(ExtendedTestCase):
         """
 
         self.temp_dir = Path(tempfile.mkdtemp()).resolve().absolute()
-
         self.original_spell_files = [
             Path("../spell.json").resolve().absolute(),
             Path("../spell_caas.json").resolve().absolute(),

@@ -1,6 +1,6 @@
 import json
 import os
-from warlock.vm_state import VMwareVimState
+from warlock.states.vm_state import VMwareVimState
 
 
 def vim_state_examples():

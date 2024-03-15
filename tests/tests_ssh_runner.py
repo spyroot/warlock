@@ -16,7 +16,6 @@ Author: Mus
 import os
 import shutil
 import subprocess
-from unittest.mock import patch
 import paramiko
 from paramiko.ssh_exception import SSHException
 from unittest.mock import patch, MagicMock
@@ -25,10 +24,9 @@ from tests.containerized_test_case import (
     ContainerizedTestCase
 )
 
-from warlock.ssh_operator import (
+from warlock.operators.ssh_operator import (
     SSHOperator,
-    PublicKeyNotFound,
-    CommandNotFound
+    PublicKeyNotFound
 )
 
 

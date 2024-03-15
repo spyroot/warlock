@@ -6,13 +6,15 @@ Author: Mus
  spyroot@gmail.com
  mbayramo@stanford.edu
 """
-import json
-from typing import List, Dict, Union, Tuple, Any, Optional
+from typing import List, Dict, Union
 import time
 import numpy as np
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    as_completed
+)
 
-from warlock.esxi_state import EsxiStateReader
+from warlock.states.esxi_state_reader import EsxiStateReader
 
 
 class EsxiMetricCollector:
@@ -34,11 +36,13 @@ class EsxiMetricCollector:
         Example output:
         {
             'my-test-np1-h5mtj-9cf8fdcf6xcfln5-k9jcm': {
-                'port_ids': [67108902, 100663326, 100663327, 100663333, 134217757, 134217760, 134217761, 134217762],
+                'port_ids': [67108902, 100663326, 100663327, 100663333,
+                            134217757, 134217760, 134217761, 134217762],
                 'esxi_host': '10.x.x.x'
             },
             'my-test-np1-h5mtj-9cf8fdcf6xcfln5-k6mdx': {
-                'port_ids': [67112135, 100666566, 100666638, 100666639, 134221065, 134221066, 134221067, 134221068],
+                'port_ids': [67112135, 100666566, 100666638,
+                             100666639, 134221065, 134221066, 134221067, 134221068],
                 'esxi_host': '10.x.x.x'
             }
         }

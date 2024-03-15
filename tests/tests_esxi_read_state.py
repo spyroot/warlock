@@ -10,8 +10,8 @@ from tests.test_utils import (
     generate_sample_vm_list,
     generate_nic_data
 )
-from warlock.esxi_state import EsxiStateReader
-from warlock.ssh_operator import SSHOperator
+from warlock.states.esxi_state_reader import EsxiStateReader
+from warlock.operators.ssh_operator import SSHOperator
 
 
 def verify_values_seq(data):

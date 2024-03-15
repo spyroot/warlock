@@ -1,20 +1,13 @@
 import json
-import os
-import random
 
 import numpy as np
 
 from tests.extended_test_case import ExtendedTestCase
 from tests.test_utils import (
-    generate_sample_adapter_list_xml,
-    generate_sample_vm_list,
-    generate_vf_state_data,
-    generate_nic_data,
     sample_vm_stats
 )
-from warlock.esxi_metric_collector import EsxiMetricCollector
-from warlock.esxi_state import EsxiStateReader
-from warlock.ssh_operator import SSHOperator
+from warlock.metrics.esxi_metric_collector import EsxiMetricCollector
+from warlock.states.esxi_state_reader import EsxiStateReader
 
 
 class TestsEsxiMetric(ExtendedTestCase):

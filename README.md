@@ -12,22 +12,37 @@ pip install pyvmomi paramiko pyyaml
 ## Overview
 
 Warlock is a spell-casting tool designed to combine a set of spells that mutate some environments.
-
-Consider IaaS as a world where Caas is an entity in a castle within that world, and worker nodes are minions. Each minion can perform some work and uses PODs. For example, a minion can move magic herbs from one spot to another.
-
+Consider IaaS as a world where Caas is an entity in a castle within that world, and worker nodes are minions. 
+Each minion can perform some work and uses PODs. For example, a minion can move magic herbs from one spot to another.
 Minions can either walk (use a slow CNI) or teleport (use DPDK).
-
 The main play here is that the Warlock needs to learn a set of spells that will make the minions more efficient.
-
 Since the Warlock has the power to bend reality, it can mutate the entire world (IaaS).
 
+## 
 
+Master spell.
 
+Some definition.
 
+A Spell Spec is a framework that encapsulates what is termed a "Master Spell."
+This Master Spell is essentially an aggregation of several spells which together 
+create a comprehensive strategy. 
 
+These spells, when cast by a Spell Caster, are applied to various environments 
+to achieve specific objectives, such as optimization tasks.  
 
+The objective is to learn a powerful Master Spell upon acting on environment
+producing maximizing desired behavior. 
 
+The framework is designed to be abstract, using terms like IaaS, CaaS, and pods metaphorically, 
+rather than referring to actual infrastructure components.
 
+The system categorizes spells into three primary types alongside additional, optional spells:
+
+IaaS Spells: Aimed at transforming what is conceptually represented as IaaS.
+CaaS Spells: Focus on altering what is analogously understood as CaaS.
+Pods Spells: These are theoretical entities used to evaluate the effectiveness 
+of a Master Spell, not direct references to Kubernetes pods or similar technologies.
 
 ## API
 
