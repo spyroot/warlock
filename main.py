@@ -72,62 +72,6 @@ def main(cmd_args):
 
     warlock.cast_spell()
 
-    # loaded_state = WarlockState.load_state_from_file('warlock_state.pkl')
-    # warlock = WarlockSpellCaster(
-    #
-    #     callbacks=[
-    #         CallbackIaaSObserver(spell_master_specs=master_spell),
-    #         # CallbackRingTunner(spell_master_specs=master_spell),
-    #         # CallbackPodsOperator(spell_master_specs=master_spell),
-    #         # CallbackPodsOperator(spell_master_specs=master_spell)
-    #         )
-    #     ],
-    #     spells_specs=master_spell
-    # )
-    # warlock.cast_spell()
-
-    # cast_spell(self):
-    # kube_state = KubernetesState()
-    # nodes = kube_state.fetch_nodes_uuid_ip(args.node_pool_name)
-    # test_environment_spec = prepare_environment(kube_state, cmd_args.test_spec)
-    #
-    # vcenter_ip = os.getenv('VCENTER_IP', 'default')
-    # username = os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local')
-    # password = os.getenv('VCENTER_PASSWORD', 'default')
-    #
-    # # a test VM that we know exists
-    # self._test_valid_vm_name = os.getenv('TEST_VM_NAME', 'default')
-    # self._test_valid_vm_substring = os.getenv('TEST_VMS_SUBSTRING', 'default')
-    #
-    # ssh_executor = None
-    # self.vmware_vim_state = VMwareVimState.from_optional_credentials(
-    #     ssh_executor, vcenter_ip=vcenter_ip,
-    #     username=username,
-    #     password=password
-    # )
-
-    # node_ips = kube_state.node_ips()
-    # print(node_ips)
-    # print(test_environment_spec)
-
-    #
-    # ssh_runner = SSHOperator(kube_state.node_ips(), username="capv", password="VMware1!")
-    # node_actions = NodeActions(
-    #     kube_state.node_ips(),
-    #     ssh_runner,
-    #     test_environment_spec
-    # )
-    #
-    # # mutate environment
-    # node_actions.update_ring_buffer()
-    # node_actions.update_active_tuned()
-    # # run experiment
-    # test_result = node_actions.start_environment()
-    #
-    # # vectorize and save result
-    # iperf_tcp_json_to_np(test_result)
-    # plot_tcp_perf(test_result, "bps", "plots", "bps_per_core_ring_size4096.png")
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Node configuration script.")
