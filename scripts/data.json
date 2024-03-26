@@ -1,0 +1,266 @@
+
+     Rx Queue#: 0 core 0
+       LRO pkts rx: 0
+       LRO byte rx: 0
+
+       ucast pkts rx: 94|24445352
+       ucast pkts rx: 95|41056848
+
+       ucast bytes rx: 1739695823736
+       mcast pkts rx: 28363
+       mcast bytes rx: 2552670
+       bcast pkts rx: 1165964
+       bcast bytes rx: 69957840
+       pkts rx OOB:
+     274 164 635
+     322 331 256
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+
+     Rx Queue#: 1
+       LRO pkts rx: 0
+       LRO byte rx: 0
+
+       ucast pkts rx: 2442230
+       ucast pkts rx: 2442608
+
+       ucast bytes rx: 2106367061
+       mcast pkts rx: 986
+       mcast bytes rx: 69020
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     Rx Queue#: 2
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 1247262
+      ucast pkts rx: 1247347
+
+       ucast bytes rx: 638723670
+       mcast pkts rx: 0
+       mcast bytes rx: 0
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     Rx Queue#: 3
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 4674076
+       ucast pkts rx: 4674837
+
+       ucast bytes rx: 652859564
+       mcast pkts rx: 28366
+       mcast bytes rx: 1701960
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     Rx Queue#: 4
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 4721527
+       ucast pkts rx: 4723065
+
+       ucast bytes rx: 1472333748
+       mcast pkts rx: 0
+       mcast bytes rx: 0
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     Rx Queue#: 5
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 936155
+                    ucast pkts rx: 936316
+
+       ucast bytes rx: 342316629
+       mcast pkts rx: 0
+       mcast bytes rx: 0
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     Rx Queue#: 6
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 26706657
+                      ucast pkts rx: 26710613
+
+       ucast bytes rx: 23694333851
+       mcast pkts rx: 107
+       mcast bytes rx: 7490
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     Rx Queue#: 7
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 15485125
+       ucast pkts rx: 15486602
+       ucast bytes rx: 11097259236
+       mcast pkts rx: 0
+       mcast bytes rx: 0
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     tx timeout count: 0
+
+
+
+ Rx Queue#: 0
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 9541056848
+       ucast bytes rx: 1752523069272
+       mcast pkts rx: 28366
+       mcast bytes rx: 2552940
+       bcast pkts rx: 1166113
+       bcast bytes rx: 69966780
+       pkts rx OOB: 306820680
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     Rx Queue#: 1
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 2442608
+       ucast bytes rx: 2106541413
+       mcast pkts rx: 986
+       mcast bytes rx: 69020
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     Rx Queue#: 2
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 1247347
+       ucast bytes rx: 638732294
+       mcast pkts rx: 0
+       mcast bytes rx: 0
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     Rx Queue#: 3
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 4674837
+       ucast bytes rx: 652940500
+       mcast pkts rx: 28370
+       mcast bytes rx: 1702200
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     Rx Queue#: 4
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 4723065
+       ucast bytes rx: 1472456440
+       mcast pkts rx: 0
+       mcast bytes rx: 0
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     Rx Queue#: 5
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 936316
+       ucast bytes rx: 342331977
+       mcast pkts rx: 0
+       mcast bytes rx: 0
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     Rx Queue#: 6
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 26710613
+       ucast bytes rx: 23697594007
+       mcast pkts rx: 107
+       mcast bytes rx: 7490
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     Rx Queue#: 7
+       LRO pkts rx: 0
+       LRO byte rx: 0
+       ucast pkts rx: 15486602
+       ucast bytes rx: 11098218858
+       mcast pkts rx: 0
+       mcast bytes rx: 0
+       bcast pkts rx: 0
+       bcast bytes rx: 0
+       pkts rx OOB: 0
+       pkts rx err: 0
+       drv dropped rx total: 0
+          err: 0
+          fcs: 0
+       rx buf alloc fail: 0
+     tx timeout count: 0

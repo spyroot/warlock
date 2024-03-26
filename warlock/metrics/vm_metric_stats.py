@@ -21,7 +21,7 @@ from typing import Optional, Dict, List, Tuple, Any
 import numpy as np
 
 from warlock.states.vm_state import (
-    VMwareVimState
+    VMwareVimStateReader
 )
 
 from pyVmomi import vim
@@ -44,7 +44,7 @@ class VMwareMetricCollectorError(Exception):
         super().__init__(message)
 
 
-class VMwareMetricCollector(VMwareVimState):
+class VMwareMetricCollector(VMwareVimStateReader):
     """
      vSphere Aggregates metric information
 
@@ -81,7 +81,7 @@ class VMwareMetricCollector(VMwareVimState):
         """
         super().__init__(
             None,
-            test_environment_spec=environment_spec,
+            iaas_spec=environment_spec,
             vcenter_ip=vcenter_ip,
             username=username,
             password=password

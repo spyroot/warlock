@@ -11,12 +11,25 @@ pip install pyvmomi paramiko pyyaml
 
 ## Overview
 
-Warlock is a spell-casting tool designed to combine a set of spells that mutate some environments.
-Consider IaaS as a world where Caas is an entity in a castle within that world, and worker nodes are minions. 
-Each minion can perform some work and uses PODs. For example, a minion can move magic herbs from one spot to another.
-Minions can either walk (use a slow CNI) or teleport (use DPDK).
-The main play here is that the Warlock needs to learn a set of spells that will make the minions more efficient.
-Since the Warlock has the power to bend reality, it can mutate the entire world (IaaS).
+The primary purpose of a warlock tool is to discover and define optimal configurations or parameters tailored 
+to specific execution environments for given tasks. These execution environments can vary,  including 
+elements such as virtualization platforms, container runtimes, and distinct functions 
+like simulations designed to yield specific metrics. For instance, the tool might assess real-time latency 
+for code executed within a Kubernetes environment or evaluate the packet-per-second rate achievable by a task. 
+From an optimization perspective, the goal is to identify a value x that delivers the most favorable outcome for 
+the specified task, enhancing performance and efficiency in the targeted environment, where x is some vector that 
+captures a set of all parameters that the agent can mutate to run a simulation and collect a set of observations.
+For example, x might be the container set of values required to find an optimal TCP buffer and a TCP algorithm 
+that can produce maximum throughput.
+
+### Abstraction
+If use Spell caster lingo, Warlock is a spell-casting tool designed to combine a set of spells 
+that mutate some environments. Consider IaaS as a world where Caas is an entity in a castle within 
+that world, and worker nodes are minions.  Each minion can perform some work and uses PODs. 
+For example, a minion can move magic herbs from one spot to another.  Minions can either walk
+(use a slow CNI) or teleport (use DPDK).  The main play here is that the Warlock needs to learn a set 
+of spells that will make the minions more efficient.  Since the Warlock has the power to bend reality, 
+it can mutate the entire world (IaaS).
 
 ## 
 

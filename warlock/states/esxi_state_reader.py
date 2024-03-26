@@ -16,10 +16,12 @@ Author: Mus
  mbayramo@stanford.edu
 """
 import os
+from abc import ABC
 from typing import Optional, Dict, List, Any, Union
 
 import numpy as np
 
+from warlock.callbacks.named_tuples import PortInfo
 from warlock.operators.ssh_operator import SSHOperator
 import xml.etree.ElementTree as ET
 import json
@@ -36,12 +38,16 @@ class InvalidESXiHostException(Exception):
         super().__init__(self.message)
 
 
-class EsxiStateReader(SpellCasterState):
+class EsxiStateReader(SpellCasterState, ABC):
+    """
+
+    """
     INTERRUPT_INTERVAL_RANGE = 4095
     MAX_VMDQ = 16
 
     def __init__(
-            self, ssh_operator: SSHOperator,
+            self,
+            ssh_operator: SSHOperator,
             credential_dict: Optional[Dict] = None,
             fqdn: Optional[str] = None,
             username: Optional[str] = "root",
@@ -106,14 +112,14 @@ class EsxiStateReader(SpellCasterState):
         """Ensure all connections are closed when exiting the context.
         """
         if self._ssh_operator is not None:
-            self._ssh_operator.close_all_connections()
+            self._ssh_operator.close_all()
             del self._ssh_operator
 
     def release(self):
         """Explicitly release resources,  closing all SSH connections.
         """
         if self._ssh_operator is not None:
-            self._ssh_operator.close_all_connections()
+            self._ssh_operator.close_all()
             del self._ssh_operator
 
     @classmethod
@@ -154,7 +160,7 @@ class EsxiStateReader(SpellCasterState):
         output, exit_code, _ = ssh_operator.run(esxi_fqdn, "esxcli --version")
         _esxi_version = cls.__read_version(output)
         if _esxi_version is None:
-            ssh_operator.close_all_connections()
+            ssh_operator.close_all()
             raise InvalidESXiHostException(esxi_fqdn)
 
         return cls(ssh_operator, None, esxi_fqdn.strip(), username.strip(), password.strip())
@@ -274,8 +280,9 @@ class EsxiStateReader(SpellCasterState):
             self,
             pf_adapter_name: str = "vmnic0"
     ) -> List[Dict[str, Any]]:
-        """Method return list of all VFs for
-        particular parent network adapter (PF).
+        """Method return list of all VFs for particular
+        parent network adapter (PF).
+
         :param pf_adapter_name: PF name of the adapter. "vmnic0" etc.
         :return: a list of VF each is dictionary
         """
@@ -297,55 +304,51 @@ class EsxiStateReader(SpellCasterState):
     def filtered_map_vm_hosts_port_ids(
             self,
             vm_names: List[str],
-            vmnic_name: Dict[str, str],
-            is_sriov: Optional[bool] = None,
-    ):
+            vnic_name: Dict[str, str] = None,
+            vmnic_name: Dict[str, str] = None,
+            mac_addresses: Optional[List[str]] = None,
+            is_sriov: Optional[bool] = None
+    ) -> Dict[str, List[PortInfo]]:
         """
-        Returns a dictionary that maps VM names to their port IDs, ESXi host,
-        and port id where port id are internal id,
+        Returns a dictionary mapping VM names to a list of PortInfo instances,
+        representing the port IDs, types, subtypes, switch names, MAC addresses,
+        client names, and SR-IOV status, filtered by the specified adapter name
+        and SR-IOV flag.
 
-        VM NIC names filtered by the specified adapter name and SR-IOV flag.
-
-        Once a VM is found on one ESXi host, it's not searched for again on another host.
-
+        :param mac_addresses:
+        :param vnic_name:
         :param vm_names: List of VM names to map.
         :param vmnic_name: Dictionary of VM names to their target adapter names.
         :param is_sriov: Optional flag to filter NICs based on SR-IOV usage.
-                         If True, only includes NICs with "SRIOV".
-                         If False, excludes those NICs.
-                         If None, includes all NICs.
         :return: Dictionary mapping VM names to their details including filtered port VM NIC names.
         """
-        vm_to_port_ids = {}
+        vm_to_port_info = {}
         vm_port_id_map = self.read_netstats_vm_net_port_ids()
 
         for vm_name in vm_names:
-            target_adapter = vmnic_name.get(vm_name, None)
-            port_ids = []
-            port_vm_nic_name = []
-
-            for port_id, port_vm_name in vm_port_id_map.items():
-                if vm_name in port_vm_name:
+            target_adapter = None
+            if vnic_name is not None:
+                target_adapter = vmnic_name.get(vm_name, None)
+            port_info_list = []
+            for port_id, port_data in vm_port_id_map.items():
+                if vm_name in port_data.client_name:
                     include_port = False
                     if is_sriov is None:
                         include_port = True
-                    elif is_sriov and "SRIOV" in port_vm_name:
-                        include_port = True
-                    elif not is_sriov and "SRIOV" not in port_vm_name:
+                    elif is_sriov == port_data.is_sriov:
                         include_port = True
 
-                    if include_port and (target_adapter is None or target_adapter in port_vm_name):
-                        port_ids.append(port_id)
-                        port_vm_nic_name.append(port_vm_name)
+                    if include_port and (target_adapter is None or target_adapter in port_data.client_name):
+                        port_info_list.append(port_data)
 
-            if port_ids:
-                vm_to_port_ids[vm_name] = {
-                    'port_ids': port_ids,
-                    'esxi_host': self.fqdn,
-                    'port_vm_nic_name': port_vm_nic_name
-                }
+            if port_info_list:
+                print(f"Found port info for {vm_name}")
+            else:
+                print(f"No port info found for {vm_name}")
 
-        return vm_to_port_ids
+            vm_to_port_info[vm_name] = port_info_list
+
+        return vm_to_port_info
 
     def read_vm_port_stats(
             self,
@@ -529,28 +532,33 @@ class EsxiStateReader(SpellCasterState):
             return json.loads(_data)
         return {}
 
-    def read_netstats_vm_net_port_ids(
-            self
-    ) -> Dict[int, str]:
-        """Return dictionary of port id to vm name in context net-stats vm name
-        :return:
+    def read_netstats_vm_net_port_ids(self) -> Dict[int, PortInfo]:
         """
+        Return a dictionary of port id to PortInfo named tuple which includes
+        vm name, MAC address, type, subtype, and switch name.
+        """
+        command_output, exit_code, _ = self._ssh_operator.run(self.fqdn, "net-stats -l")
+        if exit_code != 0 or not command_output:
+            return {}
 
-        def is_number(s):
-            """Checks if the input string s is a number."""
-            try:
-                int(s)
-                return True
-            except ValueError:
-                return False
+        port_info_dict = {}
+        for line in command_output.strip().split('\n')[2:]:
+            parts = line.split()
+            if parts and parts[0].isdigit():
+                port_id = int(parts[0])
+                port_type = int(parts[1])
+                subtype = int(parts[2])
+                switch_name = parts[3]
+                mac_address = parts[4]
 
-        _data, exit_code, _ = self._ssh_operator.run(self.fqdn, f"net-stats -l")
-        if exit_code == 0 and _data is not None:
-            _data = _data.splitlines()
-            data_rows = [line.strip().split() for line in _data if is_number(line[0])]
-            port_to_vm_name = {int(row[0]): " ".join(row[5:]).strip() for row in data_rows if len(row) >= 5}
-            return port_to_vm_name
-        return {}
+                # Client name is the remaining part of the line
+                client_name = " ".join(parts[5:])
+                is_sriov = "SRIOV" in client_name
+                port_info_dict[port_id] = PortInfo(
+                    port_id, port_type, subtype, switch_name, mac_address, client_name, is_sriov
+                )
+
+        return port_info_dict
 
     def read_netstats_by_vm(
             self,

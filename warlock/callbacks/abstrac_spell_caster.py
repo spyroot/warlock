@@ -1,13 +1,16 @@
 from abc import abstractmethod, ABCMeta
 from abc import ABC
-from typing import Optional
+from typing import Optional, Generic
 from warlock.spell_specs import SpellSpecs
 from warlock.states.spell_caster_state import SpellCasterState
 # import torch.distributed as dist
 # from loguru import logger
+from typing import Generic, TypeVar, Optional
+
+T = TypeVar('T', bound='SpellCasterState')
 
 
-class SpellCaster(ABC, metaclass=ABCMeta):
+class SpellCaster(Generic[T], ABC):
     """
     """
     @abstractmethod
@@ -28,7 +31,7 @@ class SpellCaster(ABC, metaclass=ABCMeta):
         """
         self.state_pods = None
         self._spell_spec = spell_spec
-        self._state = SpellCasterState()
+        self._state = self.initialize_state()
         self._state.verbose = verbose
 
     @abstractmethod
@@ -46,4 +49,9 @@ class SpellCaster(ABC, metaclass=ABCMeta):
     @abstractmethod
     def cast_teleport(self):
         """Cast teleport"""
+        pass
+
+    @abstractmethod
+    def initialize_state(self) -> T:
+        """Method to initialize the specific type of state."""
         pass

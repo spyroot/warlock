@@ -1,3 +1,11 @@
+"""
+Tests for reading state values from VMware Esxi
+
+Author: Mus
+ spyroot@gmail.com
+ mbayramo@stanford.edu
+"""
+
 import json
 import os
 import random

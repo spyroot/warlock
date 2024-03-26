@@ -8,15 +8,23 @@
 #
 import argparse
 import logging
+import os
 
+from warlock.callbacks.callback_esxi_observer import CallbackEsxiObserver
+from warlock.callbacks.callback_iaas_observer import CallbackIaasObserver
+from warlock.callbacks.callback_node_observer import CallbackNodeObserver
+from warlock.callbacks.callback_node_tunner import CallbackNodeTunner
 from warlock.callbacks.callback_pod_operator import CallbackPodsOperator
+from warlock.callbacks.callback_ring_tunner import CallbackRingTunner
+from warlock.callbacks.callback_state_printer import CallbackStatePrinter
 from warlock.spell_specs import SpellSpecs
 from warlock.states.kube_state_reader import KubernetesState
 from warlock.warlock import WarlockSpellCaster
 
 
 def configure_logging():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 
 def debug_info(kube_state: KubernetesState):
@@ -33,19 +41,50 @@ def debug_info(kube_state: KubernetesState):
 
 def main(cmd_args):
     """
-    :return:
+    Main function to execute the WarlockSpellCaster logic.
     """
     configure_logging()
+    state_file_path = 'warlock_state.pkl'
 
     master_spell = SpellSpecs(cmd_args.spell_file)
-    warlock = WarlockSpellCaster(
-        callbacks=[CallbackPodsOperator(
-            spell_master_specs=master_spell)
-        ],
-        spells_specs=master_spell
-    )
-    warlock.show_spells()
+
+    if os.path.exists(state_file_path):
+        print("Loading saved state...")
+        warlock = WarlockSpellCaster.create_from_state(
+            state_file_path,
+            state_callbacks=[
+                CallbackStatePrinter(spell_master_specs=master_spell),
+            ],
+            spells_specs=master_spell
+        )
+    else:
+        warlock = WarlockSpellCaster(
+            state_callbacks=[
+                CallbackPodsOperator(spell_master_specs=master_spell),
+                CallbackIaasObserver(spell_master_specs=master_spell),
+                CallbackEsxiObserver(spell_master_specs=master_spell),
+                CallbackNodeObserver(spell_master_specs=master_spell),
+                CallbackStatePrinter(spell_master_specs=master_spell),
+            ],
+            spells_specs=master_spell
+        )
+        warlock.save_state_to_file(state_file_path)
+
     warlock.cast_spell()
+
+    # loaded_state = WarlockState.load_state_from_file('warlock_state.pkl')
+    # warlock = WarlockSpellCaster(
+    #
+    #     callbacks=[
+    #         CallbackIaaSObserver(spell_master_specs=master_spell),
+    #         # CallbackRingTunner(spell_master_specs=master_spell),
+    #         # CallbackPodsOperator(spell_master_specs=master_spell),
+    #         # CallbackPodsOperator(spell_master_specs=master_spell)
+    #         )
+    #     ],
+    #     spells_specs=master_spell
+    # )
+    # warlock.cast_spell()
 
     # cast_spell(self):
     # kube_state = KubernetesState()

@@ -2,18 +2,25 @@ import logging
 import time
 from typing import Optional
 
-from warlock.callbacks.callback import Callback
-from warlock.operators.shell_operator import ShellOperator
 from warlock.spell_specs import SpellSpecs
+from warlock.callbacks.callback import Callback
 from warlock.states.kube_state_reader import KubernetesState
+from warlock.operators.shell_operator import ShellOperator
 
 
-class CallbackPodsOperator(Callback):
+class CallbackPodsOperator(Callback['WarlockState']):
     """
-    This class is designed to adjust the RX and TX ring sizes for network adapters
-    across a list of ESXi hosts. It receives a list of dictionaries detailing NICs,
-    RX, and TX values for each host, and a list of EsxiStateReader objects to interact
-    with the ESXi hosts.
+    Manages the lifecycle of a set of Kubernetes pods as part of a scenario.
+    This callback handles the creation, update, and deletion of pods according to
+    the specifications provided in the spell master specs. It is designed to prepare
+    the environment for running experiments by ensuring the necessary pods are
+    deployed and in a ready state.
+
+    Attributes:
+        spell_master_specs (SpellSpecs): Specifications and configurations for the spell master.
+        dry_run (bool, optional): If True, simulates operations without making any changes.
+        logger (logging.Logger, optional): Logger instance for outputting information.
+        reuse_existing (bool, optional): If True, existing pods are reused and not deleted.
     """
     def __init__(
             self,
@@ -23,11 +30,12 @@ class CallbackPodsOperator(Callback):
             reuse_existing:  Optional[bool] = False,
     ):
         """
-        Create Pod Operator
-        :param spell_master_specs:
-        :param dry_run:
-        :param logger:
-        :param reuse_existing:
+        Initializes the callback with the necessary configuration to manage Kubernetes pods.
+
+        :param spell_master_specs: The specifications that include pod configuration.
+        :param dry_run: If set to True, operations will be logged but not executed.
+        :param logger: A logger instance for logging output. A default logger is used if none is provided.
+        :param reuse_existing: If set to True, existing pods will not be deleted and will be reused.
         """
         super().__init__()
         self.logger = logger if logger else logging.getLogger(__name__)
@@ -57,9 +65,9 @@ class CallbackPodsOperator(Callback):
 
     def get_dry_run_plan(self):
         """
-        Retrieve the plan of operations
-        that would be executed during a dry run.
-        :return: A list of planned operations.
+        Retrieves the list of operations that would be executed during a dry run.
+
+        :return: A list of operations that are planned to be executed.
         """
         return self.dry_run_plan
 
@@ -72,7 +80,7 @@ class CallbackPodsOperator(Callback):
         self.logger.info("CallbackPodsOperator scenario begin")
 
         pods_spec = self._master_spell_spec.pods_spells()
-        pod_creation_commands = []
+        pod_creation_cmd = []
 
         for k, v in pods_spec.items():
             if isinstance(v, dict) and v['type'] == 'pod':
@@ -83,13 +91,13 @@ class CallbackPodsOperator(Callback):
 
                 # schedule pod creation as best effort
                 ShellOperator.run_command_json(f"kubectl apply -f {pod_spec_path} -n {pod_ns} -o json")
-                pod_creation_commands.append((k, pod_name, pod_ns))
+                pod_creation_cmd.append((k, pod_name, pod_ns))
 
         # blocking call
         all_pods_ready = False
         while self._timeout > 0 and not all_pods_ready:
             all_pods_ready = True
-            for k, pod_name, pod_ns in pod_creation_commands:
+            for k, pod_name, pod_ns in pod_creation_cmd:
                 pod_state = KubernetesState.read_pod_spec(pod_name, pod_ns)
                 if (pod_state.get('status', {}).get('phase') != 'Running' or
                         not pod_state.get('status', {}).get('podIPs')):
@@ -103,7 +111,7 @@ class CallbackPodsOperator(Callback):
             self.logger.error("Not all pods were ready within the timeout period.")
             return
 
-        for k, pod_name, pod_ns in pod_creation_commands:
+        for k, pod_name, pod_ns in pod_creation_cmd:
             pod_state = KubernetesState.read_pod_spec(pod_name, pod_ns)
             pod_addr = pod_state.get('status', {}).get('podIPs', [])[0].get('ip')
             phase = pod_state.get('status', {}).get('phase')
@@ -119,7 +127,8 @@ class CallbackPodsOperator(Callback):
         self._timeout = self._default_timeout
 
     def on_scenario_end(self):
-        """
+        """Executes at the end of a scenario, handling the cleanup of the created pods.
+        If 'reuse_existing' is True, pods will not be deleted.
         :return:
         """
         self.logger.info("CallbackPodsOperator scenario end")

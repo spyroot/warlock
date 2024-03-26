@@ -1,21 +1,27 @@
 import collections.abc
-from typing import Any, Optional
+from typing import Any
 import collections
-from warlock.callbacks.abstrac_spell_caster import SpellCaster
 from warlock.metrics.spell_metrics import SpellMetrics
 from warlock.states.spell_caster_state import SpellCasterState
+from typing import Generic, TypeVar, Optional
 
 try:
     collectionsAbc = collections.abc
 except AttributeError:
     collectionsAbc = collections
 
+T = TypeVar('T', bound='SpellCasterState')
 
-class Callback(object):
+
+class Callback(Generic[T]):
     """
     Provides a mechanism for spell caster register callbacks.
     Each callback executed at different phases and allow to extend
     spell caster to cast different type of spell on different phase.
+
+    Note each type of Spell Caster might have own state re-presentation
+    hence we use generic T so each callback know which type it
+    operate on.
     """
     def __init__(self, *args, **kwargs):
         """
@@ -26,14 +32,13 @@ class Callback(object):
         :param kwargs:
         """
         self.spell_metric: SpellMetrics = Optional[None]
-        self.caster_state: SpellCasterState = Optional[None]
+        self.caster_state: Optional[T] = None
 
     def register_spell_caster_state(
             self,
             spell_caster_state: SpellCasterState
     ) -> None:
         """Associates a spell caster with this callback."""
-        print("Registering spell caster state", spell_caster_state)
         self.caster_state = spell_caster_state
 
     def register_spell_metric(self, metric: SpellMetrics) -> None:
@@ -73,24 +78,25 @@ class Callback(object):
         pass
 
 
-class BaseCallbacks(Callback):
+class BaseCallbacks(Callback[T]):
     """
     """
-    def __init__(self, callbacks):
+    def __init__(
+            self,
+            callbacks: collections.abc.Iterable[Callback[T]]
+    ):
         super().__init__()
         self.callbacks = listify(callbacks)
 
     def register_spell_caster_state(
             self,
-            spell_caster_state: SpellCasterState
+            spell_caster_state: T
     ) -> None:
-        print("Registering spell caster with callbacks:", self.callbacks)
         for callback in self.callbacks:
             print(f"Processing callback: {callback.__class__.__name__}")
             if not hasattr(callback, 'register_spell_caster_state'):
                 raise TypeError(f"{callback.__class__.__name__} does not implement register_spell_caster")
             callback.register_spell_caster_state(spell_caster_state=spell_caster_state)
-            print(f"Spell caster registered with: {callback.__class__.__name__}")
 
     def register_spell_metric(self, metric: SpellMetrics) -> None:
         """Associates a metric collector with all callback."""

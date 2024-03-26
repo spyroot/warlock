@@ -2,7 +2,6 @@
   "type": "caas",
   "username": "capv",
   "password": "VMware1!",
-
   "adapters": [
     {
       "name": "eth0",

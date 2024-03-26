@@ -1,10 +1,10 @@
 import json
 import os
-from warlock.states.vm_state import VMwareVimState
+from warlock.states.vm_state import VMwareVimStateReader
 
 
 def vim_state_examples():
-    return VMwareVimState.from_optional_credentials(
+    return VMwareVimStateReader.from_optional_credentials(
         None, vcenter_ip=os.getenv('VCENTER_IP', 'default'),
         username=os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local'),
         password=os.getenv('VCENTER_PASSWORD', 'default')
@@ -35,7 +35,7 @@ def example_vms_backend_host(vm_name="vf-test-np1"):
     :return:
     """
     vm_name = "vf-test-np1"
-    vmware_vim_state = VMwareVimState.from_optional_credentials(
+    vmware_vim_state = VMwareVimStateReader.from_optional_credentials(
         None,
         vcenter_ip=os.getenv('VCENTER_IP', 'default'),
         username=os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local'),
@@ -63,7 +63,7 @@ def example_vms_sriov_nics(vm_name="vf-test-np1"):
     esxi_host = vmware_vim_state.get_esxi_ip_of_vm(vms[1])
     print(esxi_host)
 
-    vm_sriov_adapters = vmware_vim_state.vm_sriov_devices(vms[0])
+    vm_sriov_adapters = vmware_vim_state.vm_adapters_and_sriov_devices(vms[0])
     # vms_config_dicts = [vm_config_to_dict(vm_config) for vm_config in vms_config]
 
     # Now you can serialize vms_config_dicts to JSON
@@ -71,10 +71,9 @@ def example_vms_sriov_nics(vm_name="vf-test-np1"):
 
     vms, vms_config = vmware_vim_state.find_vm_by_name_substring(vm_name)
     esxi_host = vmware_vim_state.get_esxi_ip_of_vm(vms[0])
-    pci_info = vmware_vim_state.get_pci_net_device_info(esxi_host, '0000:88:00.0')
+    pci_info = vmware_vim_state.read_pci_net_device_info(esxi_host, '0000:88:00.0')
     print("Pnic INFO")
     print(pci_info)
-
 
 
 def example_vms_state():

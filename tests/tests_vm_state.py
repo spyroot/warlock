@@ -1,18 +1,19 @@
 """
-unit test for VMware VM state.
+Unit test for VMware VM state i.e. state we read from vCenter.
 
 Author: Mustafa Bayramov
 spyroot@gmail.com
 mbayramo@stanford.edu
 
 """
+import json
 import os
 import unittest
 import time
 
 
 from warlock.states.vm_state import (
-    VMwareVimState,
+    VMwareVimStateReader,
     SwitchNotFound,
     EsxHostNotFound,
     VMNotFoundException,
@@ -36,10 +37,8 @@ class TestVMwareVimState(unittest.TestCase):
         # a test VM that we know exists
         self._test_valid_vm_name = os.getenv('TEST_VM_NAME', 'default')
         self._test_valid_vm_substring = os.getenv('TEST_VMS_SUBSTRING', 'default')
-
-        ssh_executor = None
-        self.vmware_vim_state = VMwareVimState.from_optional_credentials(
-            ssh_executor, vcenter_ip=vcenter_ip,
+        self.vmware_vim_state = VMwareVimStateReader.from_optional_credentials(
+            vcenter_ip=vcenter_ip,
             username=username,
             password=password
         )
@@ -50,13 +49,12 @@ class TestVMwareVimState(unittest.TestCase):
         username = os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local')
         password = os.getenv('VCENTER_PASSWORD', 'default')
 
-        _obj = VMwareVimState(
+        _obj = VMwareVimStateReader(
             None, vcenter_ip=vcenter_ip,
             username=username,
             password=password
         )
         self.assertIsNotNone(_obj)
-        self.assertEqual(_obj.ssh_executor, None)
         self.assertEqual(_obj.vcenter_ip, vcenter_ip)
         self.assertEqual(_obj.username, username)
         self.assertEqual(_obj.password, password)
@@ -77,7 +75,7 @@ class TestVMwareVimState(unittest.TestCase):
             }
         }
 
-        obj = VMwareVimState(None, test_environment_spec=test_environment_spec)
+        obj = VMwareVimStateReader(None, iaas_spec=test_environment_spec)
         self.assertEqual(obj.vcenter_ip, test_environment_spec['iaas']['vcenter_ip'])
         self.assertEqual(obj.username, test_environment_spec['iaas']['username'])
         self.assertEqual(obj.password, test_environment_spec['iaas']['password'])
@@ -98,7 +96,7 @@ class TestVMwareVimState(unittest.TestCase):
         it returns a VM and caches it correctly.
         :return:
         """
-        _vm = self.vmware_vim_state._find_by_dns_name("")
+        _vm = self.vmware_vim_state._find_by_dns_or_uuid("")
         self.assertIsNone(
             _vm,
             "The VM object returned by _find_by_dns_name should be None"
@@ -109,7 +107,7 @@ class TestVMwareVimState(unittest.TestCase):
         it returns a VM and caches it correctly.
         :return:
         """
-        _vm = self.vmware_vim_state._find_by_dns_name(self._test_valid_vm_name)
+        _vm = self.vmware_vim_state._find_by_dns_or_uuid(self._test_valid_vm_name)
         self.assertIsNotNone(
             _vm,
             "The VM object returned by _find_by_dns_name should not be None"
@@ -132,7 +130,7 @@ class TestVMwareVimState(unittest.TestCase):
 
         self.vmware_vim_state._vm_cache.pop(self._test_valid_vm_name, None)
         start_time_first_call = time.time()
-        first_vm = self.vmware_vim_state._find_by_dns_name(self._test_valid_vm_name)
+        first_vm = self.vmware_vim_state._find_by_dns_or_uuid(self._test_valid_vm_name)
         end_time_first_call = time.time()
 
         self.assertIsNotNone(
@@ -149,7 +147,7 @@ class TestVMwareVimState(unittest.TestCase):
             f"The object in _vm_cache for key '{self._test_valid_vm_name}' should not be None")
 
         start_time_second_call = time.time()
-        second_vm = self.vmware_vim_state._find_by_dns_name(self._test_valid_vm_name)
+        second_vm = self.vmware_vim_state._find_by_dns_or_uuid(self._test_valid_vm_name)
         end_time_second_call = time.time()
 
         self.assertIsNotNone(
@@ -595,7 +593,7 @@ class TestVMwareVimState(unittest.TestCase):
         _esxi_host_identifier = next(iter(pci_devices))
         _pci_device_id = next(iter(pci_devices[_esxi_host_identifier]))
 
-        pci_pnic_info = self.vmware_vim_state.get_pci_net_device_info(
+        pci_pnic_info = self.vmware_vim_state.read_pci_net_device_info(
             _esxi_host_identifier, _pci_device_id
         )
 
@@ -622,7 +620,7 @@ class TestVMwareVimState(unittest.TestCase):
         :return:
         """
         with self.assertRaises(EsxHostNotFound):
-            _ = self.vmware_vim_state.get_pci_net_device_info(
+            _ = self.vmware_vim_state.read_pci_net_device_info(
                 "", ""
             )
 
@@ -636,7 +634,6 @@ class TestVMwareVimState(unittest.TestCase):
         expected_vm_keys, _ = self.vmware_vim_state.find_vm_by_name_substring(
             self._test_valid_vm_substring
         )
-
         self.assertIsInstance(expected_vm_keys, list,
                               "The returned object should be a list.")
 
@@ -700,6 +697,7 @@ class TestVMwareVimState(unittest.TestCase):
         :return:
         """
         _, cluster_names = self.vmware_vim_state.read_all_cluster_names()
+
         for n in cluster_names:
             c = self.vmware_vim_state.read_cluster(n)
             self.assertIsInstance(
@@ -719,7 +717,7 @@ class TestVMwareVimState(unittest.TestCase):
         )
 
     def test_read_all_resource_pools(self):
-        """Test read_cluster
+        """Test read resource pools manage objects
         :return:
         """
         rs = self.vmware_vim_state.read_all_resource_pools()
@@ -728,7 +726,7 @@ class TestVMwareVimState(unittest.TestCase):
                         "Not all elements VMwareResourcePool")
 
     def test_read_all_dvs_names(self):
-        """Test read_cluster
+        """Test read all dvs name and manage object ids.
         :return:
         """
         dvs_moids, dvs_names = self.vmware_vim_state.read_all_dvs_names()
@@ -738,4 +736,23 @@ class TestVMwareVimState(unittest.TestCase):
                         "Not all elements str")
         self.assertTrue(all(isinstance(x, str) for x in dvs_names),
                         "Not all elements str")
+        expected_substring = 'vim.dvs.VmwareDistributedVirtualSwitch'
+        self.assertTrue(all(expected_substring in moid for moid in dvs_moids),
+                        f"Not all MOIDs contain '{expected_substring}'")
 
+    def test_vm_state_data_sanity_check(self):
+        """Test vm state should return dict
+        :return:
+        """
+        vms = self.vmware_vim_state.vm_state(self._test_valid_vm_substring)
+        self.assertIsInstance(vms, dict, "The returned object should be a dictionary.")
+        for vm_name, vm_data in vms.items():
+            self.assertIn('esxiHost', vm_data, f"Key 'esxiHost' missing for VM '{vm_name}'.")
+            self.assertIn('numa_nodes', vm_data, f"Key 'numa_nodes' missing for VM '{vm_name}'.")
+            self.assertIn('numa_topology', vm_data, f"Key 'numa_topology' missing for VM '{vm_name}'.")
+            self.assertIn('esxiHostUuid', vm_data, f"Key 'esxiHostUuid' missing for VM '{vm_name}'.")
+            self.assertIn('pnic_data', vm_data, f"Key 'pnic_data' missing for VM '{vm_name}'.")
+            self.assertIn('sriov_adapters', vm_data, f"Key 'sriov_adapters' missing for VM '{vm_name}'.")
+            self.assertIn('vmxnet_adapters', vm_data, f"Key 'vmxnet_adapters' missing for VM '{vm_name}'.")
+            self.assertIn('hardware_details', vm_data, f"Key 'hardware_details' missing for VM '{vm_name}'.")
+            self.assertIn('vm_config', vm_data, f"Key 'vm_config' missing for VM '{vm_name}'.")

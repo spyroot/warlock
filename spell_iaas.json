@@ -2,8 +2,11 @@
   "type": "iaas",
   "iaas_type": "vmware",
   "host": "vcsa.vf.vmw.run",
+  "vm_template_name": "test-np1",
   "username": "administrator@vsphere.local",
   "password": "VMware1!",
+  "hosts_username": "root",
+  "hosts_password": "VMware1!",
   "adapters": [
     {
       "auto": true,

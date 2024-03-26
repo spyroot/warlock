@@ -13,7 +13,7 @@ import time
 
 from warlock.metrics.vm_metric_stats import VMwareMetricCollector
 from warlock.states.vm_state import (
-    VMwareVimState, VMNotFoundException, EsxHostNotFound
+    VMwareVimStateReader, VMNotFoundException, EsxHostNotFound
 )
 
 
@@ -45,7 +45,7 @@ class TestVMwareVimState(unittest.TestCase):
         username = os.getenv('VCENTER_USERNAME', 'administrator@vsphere.local')
         password = os.getenv('VCENTER_PASSWORD', 'default')
 
-        _obj = VMwareVimState(
+        _obj = VMwareVimStateReader(
             None, vcenter_ip=vcenter_ip,
             username=username,
             password=password

@@ -124,9 +124,9 @@ class SSHOperator:
         """
 
         logging.debug("closing connections")
-        self.close_all_connections()
+        self.close_all()
 
-    def close_all_connections(self):
+    def close_all(self):
         """Close all connections to remote host
         :return:
         """
